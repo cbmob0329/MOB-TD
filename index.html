@@ -3,13 +3,13 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
-<title>MOB TD – 敵もアイスロボ低頻度採用</title>
+<title>MOB TD – アイスロボミニ＆シールド追加</title>
 <meta name="theme-color" content="#0b0c10" />
 <style>
   :root{
     --app-w: 420px;
     --row-hud: 52px;
-    --row-controls: 176px; /* 3列×2段が入る高さ */
+    --row-controls: 186px; /* 4列×2段が入る高さ */
     --hud-bg: #0e1118f0;
     --hud-fg: #eaf3ff;
     --hud-accent: #4dd0ff;
@@ -30,7 +30,6 @@
     box-shadow:0 14px 48px rgba(0,0,0,.55);
   }
 
-  /* ===== HUD ===== */
   header.hud{
     display:flex; align-items:center; gap:6px;
     padding:6px 8px calc(6px + env(safe-area-inset-top)) 8px;
@@ -48,7 +47,6 @@
   .tiny{font-size:12px; opacity:.9}
   .clickable{cursor:pointer}
 
-  /* ===== プレイ領域（Canvasのみ） ===== */
   main.play{position:relative; background:#000;}
   #view{position:absolute; inset:0; width:100%; height:100%; image-rendering:pixelated; display:block;}
   .center-msg{
@@ -57,17 +55,16 @@
     font-size:12px; text-align:center; pointer-events:none;
   }
 
-  /* ===== 操作パネル（3列×2段・低背） ===== */
   footer.controls{
     padding:8px 8px calc(10px + env(safe-area-inset-bottom)) 8px;
     background:linear-gradient(to top,#091323,#0b1424cc);
     border-top:1px solid #0f1b2e;
-    overflow:auto; /* 低い端末でもスクロールでOK */
+    overflow:auto;
   }
-  .grid3{
+  .grid4{
     height:100%;
     display:grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(4, 1fr);
     grid-auto-rows: 1fr;
     gap:8px;
   }
@@ -91,7 +88,6 @@
 <body>
 <div id="root">
   <div id="app">
-    <!-- ===== HUD ===== -->
     <header class="hud">
       <div class="pill">💰 <b id="coins">0</b></div>
       <div class="pill tiny">+8 / 3s</div>
@@ -100,15 +96,13 @@
       <div class="pill tiny clickable" id="pausePill">⏸ Pause</div>
     </header>
 
-    <!-- ===== プレイ領域 ===== -->
     <main class="play">
       <canvas id="view"></canvas>
       <div class="center-msg" id="msg">下のボタンでユニットを出撃できます</div>
     </main>
 
-    <!-- ===== 操作パネル（3列×2段） ===== -->
     <footer class="controls">
-      <div class="grid3">
+      <div class="grid4">
         <div class="card">
           <h3>MOB段ボール</h3>
           <div class="cost">コスト <b>50</b> / HP150 / 近接</div>
@@ -120,7 +114,7 @@
           <div class="cost">コスト <b>120</b> / HP120 / 近接（速）</div>
           <button class="btn" id="btnFtr">出撃</button>
           <div class="hint">EN1-1〜EN1-5.png</div>
-      </div>
+        </div>
         <div class="card">
           <h3>ワルMOB</h3>
           <div class="cost">コスト <b>30</b> / HP100 / 近接＋短距離弾</div>
@@ -145,6 +139,18 @@
           <button class="btn" id="btnIce">出撃</button>
           <div class="hint">I1〜I5.png, I8.png</div>
         </div>
+        <div class="card">
+          <h3>MOBアイスロボミニ</h3>
+          <div class="cost">コスト <b>55</b> / HP160 / 近接（中速）</div>
+          <button class="btn" id="btnMini">出撃</button>
+          <div class="hint">IC1〜IC3.png</div>
+        </div>
+        <div class="card">
+          <h3>MOBシールド</h3>
+          <div class="cost">コスト <b>110</b> / HP500 / 中距離160px</div>
+          <button class="btn" id="btnShield">出撃</button>
+          <div class="hint">SL, SL2〜3, SL4〜5, SL8.png</div>
+        </div>
       </div>
     </footer>
   </div>
@@ -153,9 +159,15 @@
 <script>
 (() => {
   /*======================
-    敵アイス採用率（低め）
+    敵の出現ウェイト（合計=1）
+    ※必要に応じて調整してください
   ======================*/
-  const ENEMY_ICE_RATE = 0.15; // 15%でMOBアイスロボ、他は段ボール
+  const ENEMY_WEIGHTS = {
+    BOX: 0.45,
+    MINI: 0.28,
+    SHIELD: 0.15,
+    ICE: 0.12   // アイスロボは低頻度のまま
+  };
 
   // ====== 画像パス（同フォルダ） ======
   const IMAGES = {
@@ -164,14 +176,16 @@
     towerL: "T1.png",
     towerR: "T2.png",
 
-    BOX:   { idle:"C1.png",    walk:["C2.png","C3.png"],      atk:"C4.png" },
-    FTR:   { idle:"EN1-1.png", walk:["EN1-2.png","EN1-3.png"], atk:["EN1-4.png","EN1-5.png"] },
-    TEKI:  { idle:"teki1.png", walk:["teki1.png","teki2.png"], atk:"teki3.png", proj:"teki7.png" },
-    WIZ:   { idle:"MOBM.png",  walk:["MOBM2.png"],             atk:"MOBM3.png" },
-    GOLEM: { idle:"R1.png",    walk:["R1.png","R2.png","R3.png"], atk:"R4.png", proj:"R5.png" },
-    ICE:   { idle:"I1.png",    walk:["I2.png","I3.png"],      atk:"I5.png", charge:"I4.png" },
+    BOX:    { idle:"C1.png",    walk:["C2.png","C3.png"],          atk:"C4.png" },
+    FTR:    { idle:"EN1-1.png", walk:["EN1-2.png","EN1-3.png"],     atk:["EN1-4.png","EN1-5.png"] },
+    TEKI:   { idle:"teki1.png", walk:["teki1.png","teki2.png"],     atk:"teki3.png", proj:"teki7.png" },
+    WIZ:    { idle:"MOBM.png",  walk:["MOBM2.png"],                 atk:"MOBM3.png" },
+    GOLEM:  { idle:"R1.png",    walk:["R1.png","R2.png","R3.png"],  atk:"R4.png", proj:"R5.png" },
+    ICE:    { idle:"I1.png",    walk:["I2.png","I3.png"],           atk:"I5.png",  charge:"I4.png" },
+    MINI:   { idle:"IC1.png",   walk:["IC2.png"],                   atk:"IC3.png" },
+    SHIELD: { idle:"SL.png",    walk:["SL2.png","SL3.png"],         atk:["SL4.png","SL5.png"], proj:"SL8.png" },
 
-    PROJ: { magic:"mahou1.png", short:"teki7.png", golem:"R5.png", ice:"I8.png" }
+    PROJ: { magic:"mahou1.png", short:"teki7.png", golem:"R5.png", ice:"I8.png", shield:"SL8.png" }
   };
 
   // ====== DOM ======
@@ -209,26 +223,37 @@
   const PX_PER_SPEED = 18;          // px/s
   const WALK_FPS = 6, ATK_FPS = 7;
   const MELEE_RANGE = 26;
+  const RANGE_SHORT = 100;
   const RANGE_MEDIUM = 140;
-  const ATK_IDLE_PHASE = 0.18;      // 多くのユニットで「立ち→攻撃」切替に使用
-  const ATK_TOTAL      = 0.36;      // 一般の攻撃ビジュアル周期（描画用）
+  const RANGE_MEDIUM_PLUS = 160;
+  const ATK_IDLE_PHASE = 0.18;      // 立ち→攻撃 切替に使用
+  const ATK_TOTAL      = 0.36;
 
   // Projectile params
-  const PROJ_SPEED_WIZ   = 230;   // ウィザード弾
-  const PROJ_SPEED_SHORT = 200;   // ワルMOB短距離弾
-  const PROJ_SPEED_GOLEM = 180;   // ゴレム近距離投射
-  const PROJ_SPEED_ICE   = 200;   // アイスロボの弾
+  const PROJ_SPEED_WIZ    = 230;
+  const PROJ_SPEED_SHORT  = 200;  // ワルMOB
+  const PROJ_SPEED_GOLEM  = 180;
+  const PROJ_SPEED_ICE    = 200;
+  const PROJ_SPEED_SHIELD = 210;
   const PROJ_HIT_R = 16;
 
   // ゴレムの壁
   const GOLEM_BLOCK_DIST = 26;
   const GOLEM_SLOW_RATE  = 0.25;
 
-  // アイスロボ（溜め）
-  const ICE_CHARGE_TIME  = 0.50;  // 秒
-  const ICE_CHARGE_MIN_S = 0.18;  // スケール最小
-  const ICE_CHARGE_MAX_S = 1.0;   // スケール最大
-  const HOP_AMP = 8;              // ホップの高さ(px)
+  // アイスロボ（大）
+  const ICE_CHARGE_TIME  = 0.50;
+  const ICE_CHARGE_MIN_S = 0.18;
+  const ICE_CHARGE_MAX_S = 1.0;
+  const HOP_AMP_BIG = 8;
+
+  // ミニのホップ＆揺れ
+  const HOP_AMP_MINI = 6;
+  const SWAY_AMP_MINI = 3;    // x方向の見た目だけの揺れ(px)
+  const SWAY_FREQ_MINI = 2.2; // 1/s
+
+  // シールドの発射ディレイ（SL4→SL5→弾）
+  const SHIELD_DELAY_SEC = 0.20;
 
   // ====== ユニット定義 ======
   const UNIT_KINDS = {
@@ -241,7 +266,11 @@
     GOLEM: { name:"MOBゴレムロボ", hp:600, atk:10,  atkInt:1.5, speed:1, cost:100, key:"GOLEM", rangePx:MELEE_RANGE,  scale:0.75, hover:false, hop:false,
              proj:{ imgKey:"golem", speed:PROJ_SPEED_GOLEM, maxTravel:90,  wobble:false } },
     ICE:   { name:"MOBアイスロボ", hp:900, atk:100, atkInt:2.5, speed:1, cost:200, key:"ICE",  rangePx:RANGE_MEDIUM, scale:0.75, hover:false, hop:true,
-             proj:{ imgKey:"ice",   speed:PROJ_SPEED_ICE,   maxTravel:null, wobble:false, delayed:true } }
+             proj:{ imgKey:"ice",   speed:PROJ_SPEED_ICE,   maxTravel:null, wobble:false, delayed:true, delaySec: ICE_CHARGE_TIME } },
+    MINI:  { name:"MOBアイスロボミニ", hp:160, atk:23, atkInt:1.0, speed:2, cost:55, key:"MINI", rangePx:MELEE_RANGE, scale:0.58, hover:false, hop:true,
+             proj:null, sway:true },
+    SHIELD:{ name:"MOBシールド",   hp:500, atk:28, atkInt:1.6, speed:1, cost:110, key:"SHIELD", rangePx:RANGE_MEDIUM_PLUS, scale:0.72, hover:false, hop:false,
+             proj:{ imgKey:"shield", speed:PROJ_SPEED_SHIELD, maxTravel:null, wobble:false, delayed:true, delaySec: SHIELD_DELAY_SEC } }
   };
 
   // ====== 画像読み込み ======
@@ -255,7 +284,7 @@
     assets.towerL = await loadImage(IMAGES.towerL);
     assets.towerR = await loadImage(IMAGES.towerR);
 
-    for(const key of ["BOX","FTR","TEKI","WIZ","GOLEM","ICE"]){
+    for(const key of ["BOX","FTR","TEKI","WIZ","GOLEM","ICE","MINI","SHIELD"]){
       const set = IMAGES[key];
       assets[key] = { idle:null, walk:[], atk:[], charge:null };
       assets[key].idle = await loadImage(set.idle);
@@ -265,10 +294,11 @@
     }
     // projectile
     assets.PROJ = {};
-    assets.PROJ.magic = await loadImage(IMAGES.PROJ.magic);
-    assets.PROJ.short = await loadImage(IMAGES.PROJ.short);
-    assets.PROJ.golem = await loadImage(IMAGES.PROJ.golem);
-    assets.PROJ.ice   = await loadImage(IMAGES.PROJ.ice);
+    assets.PROJ.magic  = await loadImage(IMAGES.PROJ.magic);
+    assets.PROJ.short  = await loadImage(IMAGES.PROJ.short);
+    assets.PROJ.golem  = await loadImage(IMAGES.PROJ.golem);
+    assets.PROJ.ice    = await loadImage(IMAGES.PROJ.ice);
+    assets.PROJ.shield = await loadImage(IMAGES.PROJ.shield);
   }
 
   // ====== 状態 ======
@@ -283,10 +313,16 @@
   const projectiles = [];
   const hits = [];
 
-  // 敵の出撃：常に1体だけ。倒れたら次を抽選して1体だけ投入（アイスは低頻度）
+  // 敵は常に1体：倒れたら次を抽選で1体だけ
   let enemyActive = false;
   function pickEnemyKind(){
-    return Math.random() < ENEMY_ICE_RATE ? "ICE" : "BOX";
+    const r = Math.random();
+    let acc = 0;
+    for(const k of ["BOX","MINI","SHIELD","ICE"]){
+      acc += ENEMY_WEIGHTS[k] || 0;
+      if(r <= acc) return k;
+    }
+    return "BOX";
   }
 
   // ====== 補助 ======
@@ -318,7 +354,6 @@
     }
     step(dt){
       this.x += (this.side>0?1:-1) * this.speed * dt;
-      // 見た目
       this.angle += (this.speed>=230 ? 10 : 6) * dt;
       const wobY = this.wobble ? Math.sin(this.x*0.08)*4 : 0;
 
@@ -367,9 +402,11 @@
       this.rangePx = def.rangePx;
       this.hover = !!def.hover;
       this.hop   = !!def.hop;
-      this.proj = def.proj;     // null または {imgKey, speed, maxTravel? , wobble?, delayed?}
+      this.sway  = !!def.sway; // ミニ用：描画のみ横揺れ
+      this.proj = def.proj;    // null または {imgKey, speed, maxTravel? , wobble?, delayed?, delaySec?}
       this.state = "walk"; this.animT = 0;
-      this.firePending = false; // 溜め撃ち（ICE用）
+      this.firePending = false; // 遅延発射（ICE/SHIELD）
+      this.fireDelaySec = 0;
     }
     width(){ return 64*this.scale; }
     height(){ return 64*this.scale; }
@@ -406,8 +443,8 @@
       const { target, dist } = this.findTarget();
       const inRange = target && dist <= this.rangePx;
 
-      // 溜め撃ち（ICE）：アニメ中に発射
-      if(this.kind==="ICE" && this.state==="atk" && this.firePending && this.animT >= ICE_CHARGE_TIME){
+      // 遅延発射（ICE/SHIELD など）
+      if(this.state==="atk" && this.firePending && this.animT >= this.fireDelaySec){
         projectiles.push(new Projectile({
           x:this.x + (this.side>0?+12:-12), y:this.y,
           side:this.side, atk:this.atk,
@@ -423,11 +460,10 @@
         if(this.cool===0){
           this.state="atk"; this.animT=0;
           if(this.proj){
-            if(this.kind==="ICE" && this.proj.delayed){
-              // ★ アイスロボは溜め→後で発射
+            if(this.proj.delayed){
               this.firePending = true;
+              this.fireDelaySec = this.proj.delaySec || 0.2;
             }else{
-              // 通常の投射（即発射）
               projectiles.push(new Projectile({
                 x:this.x + (this.side>0?+10:-10), y:this.y,
                 side:this.side, atk:this.atk,
@@ -438,7 +474,6 @@
               }));
             }
           }else{
-            // 近接：即時ダメージ
             if(target.hp!==undefined){ target.hp -= this.atk; flash(target); }
           }
           this.cool = this.atkInt;
@@ -463,22 +498,25 @@
       const A = assets[UNIT_KINDS[this.kind].key];
       let img=null;
 
-      // 浮遊（WIZ）／ホップ（ICE）
+      // 浮遊/ホップ/揺れ
       const tNow = performance.now()/1000;
       const hoverY = this.hover ? Math.sin(tNow + this.x*0.01)*6 : 0;
-      const hopY   = (this.hop && this.state==="walk")
-                    ? -Math.abs(Math.sin(tNow*3 + this.x*0.02))*HOP_AMP : 0;
+      const hopY =
+        (this.hop && this.state==="walk")
+        ? -Math.abs(Math.sin(tNow*3 + this.x*0.02))*(this.kind==="ICE"?HOP_AMP_BIG:HOP_AMP_MINI) : 0;
+      const swayX =
+        (this.sway && this.state==="walk")
+        ? Math.sin(tNow*SWAY_FREQ_MINI + this.x*0.05)*SWAY_AMP_MINI : 0;
 
       if(this.state==="walk"){
         img = A.walk[Math.floor(this.animT*WALK_FPS)%Math.max(1,A.walk.length)] || A.idle;
 
       }else if(this.state==="atk"){
         if(this.kind==="ICE"){
-          // ★ アイス専用：I4で溜め → I5で発射後ポーズ
           const charging = this.animT < ICE_CHARGE_TIME;
           img = charging ? (A.charge || A.idle) : (A.atk[0] || A.idle);
         }else{
-          // 共通：立ち→攻撃
+          // 立ち→攻撃（複数フレームに対応：例 シールド SL4→SL5）
           const phase = this.animT % ATK_TOTAL;
           if(phase < ATK_IDLE_PHASE){
             img = A.idle;
@@ -495,21 +533,19 @@
       const w=this.width(), h=this.height();
       const flip = this.side<0;
       ctx.save();
-      ctx.translate(this.x, this.y + hoverY + hopY);
+      ctx.translate(this.x + swayX, this.y + hoverY + hopY);
       if(flip) ctx.scale(-1,1);
 
       // 本体
       drawImageCentered(ctx, img, 0, -h*0.6, w, h);
 
-      // アイスの「溜めエフェクト」：I8.pngを極小→大に拡大
+      // アイス（大）の溜め可視化
       if(this.kind==="ICE" && this.state==="atk" && this.animT < ICE_CHARGE_TIME){
         const p = Math.min(1, this.animT/ICE_CHARGE_TIME);
-        const s = ICE_CHARGE_MIN_S*(1-p) + ICE_CHARGE_MAX_S*p; // 0.18→1.0
+        const s = ICE_CHARGE_MIN_S*(1-p) + ICE_CHARGE_MAX_S*p;
         const orb = assets.PROJ.ice;
-        ctx.save();
         const offX = 14, offY = -h*0.68;
         drawImageCentered(ctx, orb, (flip?-offX:offX), offY, 24*s, 24*s);
-        ctx.restore();
       }
 
       ctx.restore();
@@ -540,7 +576,7 @@
     const now = performance.now();
     if(now - lastCoinTick >= COIN_TICK){ coins += COIN_ADD; lastCoinTick = now; }
 
-    // 敵は常に1体：いなければ抽選して1体だけ出す
+    // 敵：不在なら抽選して1体だけ出す
     if(!enemyActive){
       const k = pickEnemyKind();
       spawnEnemy(k);
@@ -558,7 +594,6 @@
     for(let i=enemies.length-1;i>=0;i--) if(enemies[i].state==="dead") enemies.splice(i,1);
     for(let i=allies.length-1;i>=0;i--) if(allies[i].state==="dead") allies.splice(i,1);
 
-    // 次の敵の準備（全滅したらフラグを下げる）
     if(enemyActive && enemies.length===0) enemyActive=false;
 
     // ヒット演出
@@ -652,6 +687,8 @@
   document.getElementById("btnWiz").addEventListener("click", ()=>spawnAlly("WIZ"));
   document.getElementById("btnGolem").addEventListener("click", ()=>spawnAlly("GOLEM"));
   document.getElementById("btnIce").addEventListener("click", ()=>spawnAlly("ICE"));
+  document.getElementById("btnMini").addEventListener("click", ()=>spawnAlly("MINI"));
+  document.getElementById("btnShield").addEventListener("click", ()=>spawnAlly("SHIELD"));
   document.getElementById("pausePill").addEventListener("click", ()=>{
     paused = !paused;
     document.getElementById("pausePill").textContent = paused ? "▶ Resume" : "⏸ Pause";

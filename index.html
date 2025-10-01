@@ -3,16 +3,13 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
-<title>MOB TD – グリッド分離版</title>
+<title>MOB TD – グリッド分離版（テスト調整）</title>
 <meta name="theme-color" content="#0b0c10" />
 <style>
   :root{
-    /* スマホ縦画面の見やすさ優先。幅はやや狭めで片手操作しやすく */
     --app-w: 420px;
-    /* グリッドの行高：HUD / PLAY / CONTROLS */
     --row-hud: 56px;
     --row-controls: 160px;
-    /* 色 */
     --hud-bg: #0e1118f0;
     --hud-fg: #eaf3ff;
     --hud-accent: #4dd0ff;
@@ -22,12 +19,11 @@
     --hp-green: #4caf50;
     --hp-red:   #ef5350;
   }
-  html,body{height:100%;margin:0;background:#000;color:#fff;font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Hiragino Kaku Gothic ProN", Meiryo, sans-serif;overscroll-behavior:none}
+  html,body{height:100%;margin:0;background:#000;color:#fff;font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Hiragino Kaku Gothic ProN",Meiryo,sans-serif;overscroll-behavior:none}
   *{box-sizing:border-box}
-
   #root{position:fixed;inset:0;display:grid;place-items:center}
   #app{
-    width:min(100vw, var(--app-w));
+    width:min(100vw,var(--app-w));
     height:100dvh;
     display:grid;
     grid-template-rows: calc(var(--row-hud) + env(safe-area-inset-top)) 1fr calc(var(--row-controls) + env(safe-area-inset-bottom));
@@ -35,8 +31,6 @@
     border:1px solid #0e1522; border-radius:18px; overflow:hidden;
     box-shadow:0 14px 48px rgba(0,0,0,.55);
   }
-
-  /* ====== HUD行 ====== */
   header.hud{
     display:flex; align-items:center; gap:8px;
     padding:8px 10px calc(8px + env(safe-area-inset-top)) 10px;
@@ -53,36 +47,19 @@
   .spacer{flex:1}
   .tiny{font-size:12px; opacity:.9}
   .clickable{cursor:pointer}
-
-  /* ====== プレイ領域（Canvas専用） ====== */
-  main.play{
-    position:relative; background:#000;
-  }
-  #view{
-    position:absolute; inset:0;
-    width:100%; height:100%;
-    image-rendering: pixelated;
-    display:block;
-  }
-  /* 中央メッセージ（プレイ領域内のみ表示） */
+  main.play{position:relative; background:#000;}
+  #view{position:absolute; inset:0; width:100%; height:100%; image-rendering:pixelated; display:block;}
   .center-msg{
     position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
     padding:8px 12px; border-radius:10px; background:#00000099; border:1px solid #24324f;
     font-size:12px; text-align:center; pointer-events:none;
   }
-
-  /* ====== 操作パネル行 ====== */
   footer.controls{
     padding:10px 10px calc(12px + env(safe-area-inset-bottom)) 10px;
     background:linear-gradient(to top,#091323,#0b1424cc);
     border-top:1px solid #0f1b2e;
   }
-  .grid2{
-    height:100%;
-    display:grid;
-    grid-template-columns: 1fr 1fr;
-    gap:10px;
-  }
+  .grid2{height:100%; display:grid; grid-template-columns:1fr 1fr; gap:10px;}
   .card{
     background:var(--panel-bg); color:#e7f1ff;
     border:1px solid var(--panel-stroke); border-radius:14px; padding:10px;
@@ -98,13 +75,11 @@
   }
   .btn:disabled{opacity:.5; filter:grayscale(.3); cursor:not-allowed}
   .hint{font-size:11px; opacity:.8}
-
 </style>
 </head>
 <body>
 <div id="root">
   <div id="app">
-    <!-- ===== HUD行 ===== -->
     <header class="hud">
       <div class="pill" id="coinBox">💰 <b id="coins">0</b></div>
       <div class="pill tiny" id="income">+8 / 3s</div>
@@ -113,13 +88,11 @@
       <div class="pill tiny clickable" id="pausePill">⏸ Pause</div>
     </header>
 
-    <!-- ===== プレイ領域（Canvasだけ） ===== -->
     <main class="play">
       <canvas id="view"></canvas>
       <div class="center-msg" id="msg">下のボタンでユニットを出撃できます</div>
     </main>
 
-    <!-- ===== 操作パネル行 ===== -->
     <footer class="controls">
       <div class="grid2">
         <div class="card">
@@ -147,7 +120,7 @@
     floor: "doro.png",
     towerL: "T1.png",
     towerR: "T2.png",
-    BOX: { idle:"C1.png", walk:["C2.png","C3.png"], atk:"C4.png" },
+    BOX: { idle:"C1.png", walk:["C2.png","C3.png"], atk:"C4.png" }, // 段ボールは攻撃1枚
     FTR: { idle:"EN1-1.png", walk:["EN1-2.png","EN1-3.png"], atk:["EN1-4.png","EN1-5.png"] }
   };
 
@@ -159,8 +132,8 @@
   const fpsEl = document.getElementById("fps");
   const msgEl = document.getElementById("msg");
 
-  // ====== レイアウトに追従するキャンバスサイズ ======
-  let W = 420, H = 560; // 初期値（実際はmeasure()で上書き）
+  // ====== プレイ領域に合わせたキャンバス ======
+  let W = 420, H = 560;
   function measure(){
     const r = playEl.getBoundingClientRect();
     W = Math.max(320, Math.round(r.width));
@@ -171,21 +144,25 @@
   measure();
   addEventListener("resize", measure);
 
-  // ====== フロアとタワーの基準位置（常にプレイ領域に対して計算） ======
+  // ====== 幾何（地面をプレイ領域下部に固定） ======
   function geom(){
-    const groundBandH = Math.round(H * 0.22);                 // 下部22%を路面帯に
-    const groundTopY  = H - groundBandH;                      // 帯の開始＝上端
-    const GROUND_Y    = groundTopY + Math.round(groundBandH*0.85); // キャラの足元
+    const groundBandH = Math.round(H * 0.22);
+    const groundTopY  = H - groundBandH;
+    const GROUND_Y    = groundTopY + Math.round(groundBandH*0.85);
     const L_TOWER_X   = Math.round(W * 0.09);
     const R_TOWER_X   = Math.round(W * 0.91);
     return { groundBandH, groundTopY, GROUND_Y, L_TOWER_X, R_TOWER_X };
   }
 
-  // ====== 表示・戦闘の定数 ======
+  // ====== 定数 ======
   const COIN_TICK = 3000, COIN_ADD = 8;
   const MELEE_RANGE = 26;
-  const PX_PER_SPEED = 18;      // 移動スピード係数（px/s）
+  const PX_PER_SPEED = 18;
   const WALK_FPS = 6, ATK_FPS = 7;
+
+  // 段ボールの「立ち絵→攻撃」演出長さ
+  const BOX_ATK_IDLE_PHASE = 0.18; // 攻撃開始からこの時間は立ち絵を表示
+  const BOX_ATK_TOTAL      = 0.36; // 1サイクルの目安（描画側のみ）
 
   // ====== ユニット定義 ======
   const UNIT_KINDS = {
@@ -195,10 +172,7 @@
 
   // ====== 画像読み込み ======
   function loadImage(src){
-    return new Promise((res) => {
-      const img = new Image();
-      img.src = src; img.onload = ()=>res(img); img.onerror = ()=>res(null);
-    });
+    return new Promise((res)=>{ const img=new Image(); img.src=src; img.onload=()=>res(img); img.onerror=()=>res(null); });
   }
   const assets = {};
   async function loadAll(){
@@ -216,10 +190,10 @@
   }
 
   // ====== 状態 ======
-  let coins = 50, lastCoinTick = 0, paused = false;
+  let coins = 500;                 // ★ テスト用：初期500コイン
+  let lastCoinTick = 0, paused = false;
   let lastTime = performance.now(), fpsSmoothed = 60;
 
-  // タワー（geom()依存のためダミーで生成→起動時に座標設定）
   const towerL = { x:0, y:0, hp:1200, side:+1 };
   const towerR = { x:0, y:0, hp:1200, side:-1 };
 
@@ -229,7 +203,7 @@
   let enemyQueue = [{kind:"BOX"},{kind:"BOX"},{kind:"BOX"},{kind:"BOX"},{kind:"BOX"}];
   let enemyActive = false;
 
-  // ====== 単位色補間（HPバー用） ======
+  // ====== 色補間 ======
   function mixHex(a,b,t){
     function toRGB(h){const n=parseInt(h.slice(1),16);return {r:(n>>16)&255,g:(n>>8)&255,b:n&255}}
     function toHex(r,g,b){return "#"+[r,g,b].map(v=>v.toString(16).padStart(2,"0")).join("")}
@@ -280,14 +254,15 @@
 
       if(inRange){
         if(this.cool===0){
-          this.state="atk"; this.animT=0;
+          this.state="atk";
+          this.animT=0;
+          // ダメージは即時適用（視覚は「立ち→攻撃」で表現）
           if(target.hp!==undefined){ target.hp -= this.atk; flash(target); }
           this.cool = this.atkInt;
         }
       }else{
         this.state="walk";
         this.x += this.side * this.speed * dt;
-        // タワーめり込み制限
         const g = geom();
         const limitL = g.L_TOWER_X + 18;
         const limitR = g.R_TOWER_X - 18;
@@ -303,11 +278,23 @@
       if(this.state==="dead") return;
       const A = assets[this.kind];
       let img=null;
+
       if(this.state==="walk"){
         img = A.walk[Math.floor(this.animT*WALK_FPS)%Math.max(1,A.walk.length)] || A.idle;
+
       }else if(this.state==="atk"){
-        img = A.atk[Math.floor(this.animT*ATK_FPS)%Math.max(1,A.atk.length)] || A.idle;
-      }else img = A.idle;
+        if(this.kind==="BOX"){
+          // ★ 段ボール専用：「立ち絵 → 攻撃」2段演出
+          const phase = this.animT % (BOX_ATK_TOTAL);
+          img = (phase < BOX_ATK_IDLE_PHASE) ? A.idle : (A.atk[0] || A.idle);
+        }else{
+          // 他は通常どおり攻撃アニメをループ
+          img = A.atk[Math.floor(this.animT*ATK_FPS)%Math.max(1,A.atk.length)] || A.idle;
+        }
+
+      }else{
+        img = A.idle;
+      }
 
       const w=this.width(), h=this.height();
       const flip = this.side<0;
@@ -331,7 +318,6 @@
     if(!img){ ctx.fillStyle="#8886"; ctx.fillRect(cx-w/2, cy-h/2, w, h); return; }
     ctx.drawImage(img, cx-w/2, cy-h/2, w, h);
   }
-
   function flash(target){ hits.push({x:target.x, y:target.y-28, t:0}); }
 
   // ====== スポーン ======
@@ -355,21 +341,18 @@
     for(const u of allies) u.step(dt);
     for(const u of enemies) u.step(dt);
 
-    // 死亡掃除
     for(let i=enemies.length-1;i>=0;i--) if(enemies[i].state==="dead") enemies.splice(i,1);
     for(let i=allies.length-1;i>=0;i--) if(allies[i].state==="dead") allies.splice(i,1);
 
-    // 敵：全滅で次キュー可能に
     if(enemyActive && enemies.length===0) enemyActive=false;
 
-    // ヒット演出
     for(let i=hits.length-1;i>=0;i--){ hits[i].t += dt; if(hits[i].t>0.25) hits.splice(i,1); }
   }
 
   function draw(){
     const g = geom();
 
-    // 背景（プレイ領域全体にフィット）
+    // 背景
     ctx.clearRect(0,0,W,H);
     if(assets.bg){
       const bg = assets.bg;
@@ -380,7 +363,7 @@
       ctx.fillStyle="#08111f"; ctx.fillRect(0,0,W,H);
     }
 
-    // フロア帯（必ず下部に表示）
+    // フロア帯（下部に固定）
     if(assets.floor){
       const fh = g.groundBandH;
       const y  = g.groundTopY;
@@ -404,7 +387,6 @@
       if(flip) ctx.scale(-1,1);
       drawImageCentered(ctx, img, 0, -th*0.62, tw, th);
       ctx.restore();
-      // HP
       const hpw = Math.round(W*0.22), hph=7, x=t.x-hpw/2, y=g.GROUND_Y - th*0.85;
       const rate = Math.max(0,t.hp)/1200;
       ctx.fillStyle="#000000aa"; ctx.fillRect(x,y,hpw,hph);
@@ -414,7 +396,7 @@
     drawTower(towerL, assets.towerL);
     drawTower(towerR, assets.towerR);
 
-    // ユニット（x順）
+    // ユニット
     const all = [...allies,...enemies].sort((a,b)=>a.x-b.x);
     for(const u of all) u.draw(ctx);
 
@@ -435,7 +417,6 @@
     let dt = (now - lastTime)/1000; lastTime = now;
     dt = Math.min(dt, 0.05);
     step(dt); draw();
-    // HUD
     coinsEl.textContent = coins|0;
     const inst = 1/dt; fpsSmoothed = fpsSmoothed*0.9 + inst*0.1; fpsEl.textContent = Math.round(fpsSmoothed);
     requestAnimationFrame(loop);
@@ -457,11 +438,9 @@
   // ====== 起動 ======
   (async ()=>{
     await loadAll();
-    // 初回の幾何→タワー座標を今のプレイ領域に合わせる
     const g = geom();
     towerL.x = g.L_TOWER_X; towerL.y = g.GROUND_Y;
     towerR.x = g.R_TOWER_X; towerR.y = g.GROUND_Y;
-
     lastCoinTick = performance.now();
     msgEl.style.display="block";
     lastTime = performance.now();

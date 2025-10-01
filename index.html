@@ -3,13 +3,13 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
-<title>MOB TD – アイスロボミニ＆シールド追加</title>
+<title>MOB TD – 巨神追加（ボス）</title>
 <meta name="theme-color" content="#0b0c10" />
 <style>
   :root{
     --app-w: 420px;
     --row-hud: 52px;
-    --row-controls: 186px; /* 4列×2段が入る高さ */
+    --row-controls: 186px; /* 下部はスクロール可。9枚以上もOK */
     --hud-bg: #0e1118f0;
     --hud-fg: #eaf3ff;
     --hud-accent: #4dd0ff;
@@ -59,7 +59,7 @@
     padding:8px 8px calc(10px + env(safe-area-inset-bottom)) 8px;
     background:linear-gradient(to top,#091323,#0b1424cc);
     border-top:1px solid #0f1b2e;
-    overflow:auto;
+    overflow:auto; /* 多い時はスクロールで全カードにアクセス */
   }
   .grid4{
     height:100%;
@@ -151,6 +151,12 @@
           <button class="btn" id="btnShield">出撃</button>
           <div class="hint">SL, SL2〜3, SL4〜5, SL8.png</div>
         </div>
+        <div class="card">
+          <h3>MOB巨神</h3>
+          <div class="cost">コスト <b>300</b> / HP2000 / ボス</div>
+          <button class="btn" id="btnGiant">出撃</button>
+          <div class="hint">P1,P2,P3,P6,P7,P10.png</div>
+        </div>
       </div>
     </footer>
   </div>
@@ -159,14 +165,15 @@
 <script>
 (() => {
   /*======================
-    敵の出現ウェイト（合計=1）
-    ※必要に応じて調整してください
+    敵の出現ウェイト（合計≈1）
+    巨神は低頻度のボス枠
   ======================*/
   const ENEMY_WEIGHTS = {
-    BOX: 0.45,
-    MINI: 0.28,
-    SHIELD: 0.15,
-    ICE: 0.12   // アイスロボは低頻度のまま
+    BOX: 0.40,
+    MINI: 0.26,
+    SHIELD: 0.14,
+    ICE: 0.14,
+    GIANT: 0.06
   };
 
   // ====== 画像パス（同フォルダ） ======
@@ -184,8 +191,9 @@
     ICE:    { idle:"I1.png",    walk:["I2.png","I3.png"],           atk:"I5.png",  charge:"I4.png" },
     MINI:   { idle:"IC1.png",   walk:["IC2.png"],                   atk:"IC3.png" },
     SHIELD: { idle:"SL.png",    walk:["SL2.png","SL3.png"],         atk:["SL4.png","SL5.png"], proj:"SL8.png" },
+    GIANT:  { idle:"P1.png",    walk:["P1.png","P2.png","P3.png"],  charge:"P6.png", atk:"P7.png", proj:"P10.png" },
 
-    PROJ: { magic:"mahou1.png", short:"teki7.png", golem:"R5.png", ice:"I8.png", shield:"SL8.png" }
+    PROJ: { magic:"mahou1.png", short:"teki7.png", golem:"R5.png", ice:"I8.png", shield:"SL8.png", giant:"P10.png" }
   };
 
   // ====== DOM ======
@@ -221,39 +229,48 @@
   // ====== パラメータ ======
   const COIN_TICK = 3000, COIN_ADD = 8;
   const PX_PER_SPEED = 18;          // px/s
-  const WALK_FPS = 6, ATK_FPS = 7;
+  const WALK_FPS = 6;
   const MELEE_RANGE = 26;
-  const RANGE_SHORT = 100;
   const RANGE_MEDIUM = 140;
   const RANGE_MEDIUM_PLUS = 160;
-  const ATK_IDLE_PHASE = 0.18;      // 立ち→攻撃 切替に使用
+  const ATK_IDLE_PHASE = 0.18;
   const ATK_TOTAL      = 0.36;
 
   // Projectile params
   const PROJ_SPEED_WIZ    = 230;
-  const PROJ_SPEED_SHORT  = 200;  // ワルMOB
+  const PROJ_SPEED_SHORT  = 200;
   const PROJ_SPEED_GOLEM  = 180;
   const PROJ_SPEED_ICE    = 200;
   const PROJ_SPEED_SHIELD = 210;
+  const PROJ_SPEED_GIANT  = 240; // 巨神の弾（短距離でも迫力ある速度）
   const PROJ_HIT_R = 16;
 
   // ゴレムの壁
   const GOLEM_BLOCK_DIST = 26;
   const GOLEM_SLOW_RATE  = 0.25;
 
-  // アイスロボ（大）
+  // アイス（大）
   const ICE_CHARGE_TIME  = 0.50;
   const ICE_CHARGE_MIN_S = 0.18;
   const ICE_CHARGE_MAX_S = 1.0;
-  const HOP_AMP_BIG = 8;
 
   // ミニのホップ＆揺れ
   const HOP_AMP_MINI = 6;
-  const SWAY_AMP_MINI = 3;    // x方向の見た目だけの揺れ(px)
-  const SWAY_FREQ_MINI = 2.2; // 1/s
+  const SWAY_AMP_MINI = 3;
+  const SWAY_FREQ_MINI = 2.2;
 
-  // シールドの発射ディレイ（SL4→SL5→弾）
+  // シールドの発射ディレイ
   const SHIELD_DELAY_SEC = 0.20;
+
+  // 巨神：溜め・ジャンプ
+  const GIANT_CHARGE_TIME = 0.60;     // P6で強く震える時間
+  const GIANT_HOP_AMP     = 14;       // 通常ホップ
+  const GIANT_BIGJUMP_AMP = 28;       // ハイジャンプ（P3）
+  const GIANT_BIGJUMP_PERIOD = 3.0;   // 何秒ごとに大ジャンプ見せるか
+  const GIANT_PROJ_TRAVEL = 110;      // 弾の飛距離（短距離）
+
+  // 画面シェイク（巨神の溜め中）
+  let screenShakeA = 0;
 
   // ====== ユニット定義 ======
   const UNIT_KINDS = {
@@ -270,7 +287,10 @@
     MINI:  { name:"MOBアイスロボミニ", hp:160, atk:23, atkInt:1.0, speed:2, cost:55, key:"MINI", rangePx:MELEE_RANGE, scale:0.58, hover:false, hop:true,
              proj:null, sway:true },
     SHIELD:{ name:"MOBシールド",   hp:500, atk:28, atkInt:1.6, speed:1, cost:110, key:"SHIELD", rangePx:RANGE_MEDIUM_PLUS, scale:0.72, hover:false, hop:false,
-             proj:{ imgKey:"shield", speed:PROJ_SPEED_SHIELD, maxTravel:null, wobble:false, delayed:true, delaySec: SHIELD_DELAY_SEC } }
+             proj:{ imgKey:"shield", speed:PROJ_SPEED_SHIELD, maxTravel:null, wobble:false, delayed:true, delaySec: SHIELD_DELAY_SEC } },
+    GIANT: { name:"MOB巨神",       hp:2000, atk:100, atkInt:2.5, speed:1, cost:300, key:"GIANT", rangePx:MELEE_RANGE, scale:0.95, hover:false, hop:true,
+             proj:{ imgKey:"giant", speed:PROJ_SPEED_GIANT, maxTravel:GIANT_PROJ_TRAVEL, wobble:false, delayed:true, delaySec: GIANT_CHARGE_TIME },
+             giant:true }
   };
 
   // ====== 画像読み込み ======
@@ -284,7 +304,7 @@
     assets.towerL = await loadImage(IMAGES.towerL);
     assets.towerR = await loadImage(IMAGES.towerR);
 
-    for(const key of ["BOX","FTR","TEKI","WIZ","GOLEM","ICE","MINI","SHIELD"]){
+    for(const key of Object.keys(UNIT_KINDS)){
       const set = IMAGES[key];
       assets[key] = { idle:null, walk:[], atk:[], charge:null };
       assets[key].idle = await loadImage(set.idle);
@@ -294,11 +314,7 @@
     }
     // projectile
     assets.PROJ = {};
-    assets.PROJ.magic  = await loadImage(IMAGES.PROJ.magic);
-    assets.PROJ.short  = await loadImage(IMAGES.PROJ.short);
-    assets.PROJ.golem  = await loadImage(IMAGES.PROJ.golem);
-    assets.PROJ.ice    = await loadImage(IMAGES.PROJ.ice);
-    assets.PROJ.shield = await loadImage(IMAGES.PROJ.shield);
+    for(const k of Object.keys(IMAGES.PROJ)){ assets.PROJ[k] = await loadImage(IMAGES.PROJ[k]); }
   }
 
   // ====== 状態 ======
@@ -318,7 +334,7 @@
   function pickEnemyKind(){
     const r = Math.random();
     let acc = 0;
-    for(const k of ["BOX","MINI","SHIELD","ICE"]){
+    for(const k of ["BOX","MINI","SHIELD","ICE","GIANT"]){
       acc += ENEMY_WEIGHTS[k] || 0;
       if(r <= acc) return k;
     }
@@ -378,7 +394,7 @@
       this._wobY = wobY;
     }
     draw(ctx){
-      const sz = 28;
+      const sz = 30;
       ctx.save();
       ctx.translate(this.x, (this.y - 28) + (this._wobY||0));
       ctx.rotate(this.angle);
@@ -402,11 +418,12 @@
       this.rangePx = def.rangePx;
       this.hover = !!def.hover;
       this.hop   = !!def.hop;
-      this.sway  = !!def.sway; // ミニ用：描画のみ横揺れ
+      this.sway  = !!def.sway;
       this.proj = def.proj;    // null または {imgKey, speed, maxTravel? , wobble?, delayed?, delaySec?}
       this.state = "walk"; this.animT = 0;
-      this.firePending = false; // 遅延発射（ICE/SHIELD）
+      this.firePending = false; // 遅延発射（ICE/SHIELD/GIANT）
       this.fireDelaySec = 0;
+      this.giant = !!def.giant;
     }
     width(){ return 64*this.scale; }
     height(){ return 64*this.scale; }
@@ -443,10 +460,10 @@
       const { target, dist } = this.findTarget();
       const inRange = target && dist <= this.rangePx;
 
-      // 遅延発射（ICE/SHIELD など）
+      // 遅延発射（ICE/SHIELD/GIANT）
       if(this.state==="atk" && this.firePending && this.animT >= this.fireDelaySec){
         projectiles.push(new Projectile({
-          x:this.x + (this.side>0?+12:-12), y:this.y,
+          x:this.x + (this.side>0?+14:-14), y:this.y,
           side:this.side, atk:this.atk,
           imgKey:this.proj.imgKey,
           speed:this.proj.speed || 220,
@@ -463,6 +480,8 @@
             if(this.proj.delayed){
               this.firePending = true;
               this.fireDelaySec = this.proj.delaySec || 0.2;
+              // 巨神の溜め中は画面シェイク強化
+              if(this.giant) screenShakeA = Math.max(screenShakeA, 1.0);
             }else{
               projectiles.push(new Projectile({
                 x:this.x + (this.side>0?+10:-10), y:this.y,
@@ -495,28 +514,47 @@
 
     draw(ctx){
       if(this.state==="dead") return;
-      const A = assets[UNIT_KINDS[this.kind].key];
+      const def = UNIT_KINDS[this.kind];
+      const A = assets[def.key];
       let img=null;
 
-      // 浮遊/ホップ/揺れ
       const tNow = performance.now()/1000;
       const hoverY = this.hover ? Math.sin(tNow + this.x*0.01)*6 : 0;
-      const hopY =
-        (this.hop && this.state==="walk")
-        ? -Math.abs(Math.sin(tNow*3 + this.x*0.02))*(this.kind==="ICE"?HOP_AMP_BIG:HOP_AMP_MINI) : 0;
-      const swayX =
-        (this.sway && this.state==="walk")
+
+      // ホップ（ICE/MINI/巨神）＆巨神の大ジャンプ
+      let hopAmp = 0, hopY = 0, useHighJump = false;
+      if(this.hop && this.state==="walk"){
+        if(this.giant){
+          // 一定周期でハイジャンプ（P3を使う）
+          const phase = (tNow % GIANT_BIGJUMP_PERIOD) / GIANT_BIGJUMP_PERIOD;
+          useHighJump = (phase > 0.75); // 最後の25%は大ジャンプ
+          hopAmp = useHighJump ? GIANT_BIGJUMP_AMP : GIANT_HOP_AMP;
+        }else{
+          hopAmp = (this.kind==="ICE") ? 8 : HOP_AMP_MINI;
+        }
+        hopY = -Math.abs(Math.sin(tNow*3 + this.x*0.02))*hopAmp;
+      }
+
+      // 横揺れ（ミニ）
+      const swayX = (this.sway && this.state==="walk")
         ? Math.sin(tNow*SWAY_FREQ_MINI + this.x*0.05)*SWAY_AMP_MINI : 0;
 
       if(this.state==="walk"){
-        img = A.walk[Math.floor(this.animT*WALK_FPS)%Math.max(1,A.walk.length)] || A.idle;
-
+        if(this.giant && useHighJump){
+          // ハイジャンプは明示的にP3
+          img = A.walk[2] || A.walk[0] || A.idle;
+        }else{
+          img = A.walk[Math.floor(this.animT*WALK_FPS)%Math.max(1,A.walk.length)] || A.idle;
+        }
       }else if(this.state==="atk"){
-        if(this.kind==="ICE"){
+        if(this.giant){
+          // 溜めはP6（charge）でガタガタ震える→放つ瞬間はP7
+          const charging = this.animT < GIANT_CHARGE_TIME;
+          img = charging ? (A.charge || A.idle) : (A.atk[0] || A.idle);
+        }else if(this.kind==="ICE"){
           const charging = this.animT < ICE_CHARGE_TIME;
           img = charging ? (A.charge || A.idle) : (A.atk[0] || A.idle);
         }else{
-          // 立ち→攻撃（複数フレームに対応：例 シールド SL4→SL5）
           const phase = this.animT % ATK_TOTAL;
           if(phase < ATK_IDLE_PHASE){
             img = A.idle;
@@ -532,11 +570,19 @@
 
       const w=this.width(), h=this.height();
       const flip = this.side<0;
+
+      // 巨神の溜め中はスプライト自体を強く震わせる
+      let shakeX=0, shakeY=0;
+      if(this.giant && this.state==="atk" && this.animT < GIANT_CHARGE_TIME){
+        const s = 2.5; // スプライトの震え量
+        shakeX = (Math.random()*2-1)*s;
+        shakeY = (Math.random()*2-1)*s;
+      }
+
       ctx.save();
-      ctx.translate(this.x + swayX, this.y + hoverY + hopY);
+      ctx.translate(this.x + swayX + shakeX, this.y + hoverY + hopY + shakeY);
       if(flip) ctx.scale(-1,1);
 
-      // 本体
       drawImageCentered(ctx, img, 0, -h*0.6, w, h);
 
       // アイス（大）の溜め可視化
@@ -548,15 +594,26 @@
         drawImageCentered(ctx, orb, (flip?-offX:offX), offY, 24*s, 24*s);
       }
 
+      // 巨神の溜め可視化（エネルギーの揺らぎとしてP10を小さく点滅）
+      if(this.giant && this.state==="atk" && this.animT < GIANT_CHARGE_TIME){
+        const p = (Math.sin(tNow*12)+1)/2;
+        const s = 0.4 + p*0.3;
+        const orb = assets.PROJ.giant;
+        const offX = 18, offY = -h*0.65;
+        drawImageCentered(ctx, orb, (flip?-offX:offX), offY, 26*s, 26*s);
+      }
+
       ctx.restore();
 
       // HPバー
-      const hpw = 46, hph=5, x = this.x - hpw/2, y = (this.y + hoverY + hopY) - h*0.9;
+      const hpw = this.giant ? 64 : 46;
+      const hph = 6;
+      const barX = this.x - hpw/2, barY = (this.y + hoverY + hopY) - h*0.92;
       const rate = Math.max(0,this.hp)/this.maxHp;
-      ctx.fillStyle="#000000aa"; ctx.fillRect(x,y,hpw,hph);
+      ctx.fillStyle="#000000aa"; ctx.fillRect(barX,barY,hpw,hph);
       ctx.fillStyle = mixHex("#ef5350","#4caf50", rate);
-      ctx.fillRect(x,y,hpw*rate,hph);
-      ctx.strokeStyle="#1a263d"; ctx.strokeRect(x+0.5,y+0.5,hpw-1,hph-1);
+      ctx.fillRect(barX,barY,hpw*rate,hph);
+      ctx.strokeStyle="#1a263d"; ctx.strokeRect(barX+0.5,barY+0.5,hpw-1,hph-1);
     }
   }
 
@@ -596,8 +653,8 @@
 
     if(enemyActive && enemies.length===0) enemyActive=false;
 
-    // ヒット演出
-    for(let i=hits.length-1;i>=0;i--){ hits[i].t += dt; if(hits[i].t>0.25) hits.splice(i,1); }
+    // 巨神の溜めによる画面シェイク減衰
+    screenShakeA = Math.max(0, screenShakeA - dt*1.8);
   }
 
   function draw(){
@@ -605,6 +662,14 @@
 
     // 背景
     ctx.clearRect(0,0,W,H);
+
+    // 画面シェイクの適用（巨神の溜め中）
+    ctx.save();
+    if(screenShakeA>0){
+      const amp = 3*screenShakeA;
+      ctx.translate((Math.random()*2-1)*amp, (Math.random()*2-1)*amp);
+    }
+
     if(assets.bg){
       const bg = assets.bg;
       const r = Math.max(W/bg.width, H/bg.height);
@@ -662,6 +727,8 @@
       ctx.beginPath(); ctx.arc(h.x, h.y, 10 + h.t*40, 0, Math.PI*2); ctx.fill();
       ctx.restore();
     }
+
+    ctx.restore(); // シェイク終了
   }
 
   // ====== ループ ======
@@ -689,6 +756,7 @@
   document.getElementById("btnIce").addEventListener("click", ()=>spawnAlly("ICE"));
   document.getElementById("btnMini").addEventListener("click", ()=>spawnAlly("MINI"));
   document.getElementById("btnShield").addEventListener("click", ()=>spawnAlly("SHIELD"));
+  document.getElementById("btnGiant").addEventListener("click", ()=>spawnAlly("GIANT"));
   document.getElementById("pausePill").addEventListener("click", ()=>{
     paused = !paused;
     document.getElementById("pausePill").textContent = paused ? "▶ Resume" : "⏸ Pause";

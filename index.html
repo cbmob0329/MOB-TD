@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+<title>MOBファイター – Battle Cats-like</title>
+<meta name="theme-color" content="#0b0c10" />
+<style>
+  :root{ --hud:#0e0f12cc; --fg:#e8eefb; --accent:#53d6ff; --danger:#ff4d6d; }
+  html,body{height:100%;margin:0;background:#070b12;color:var(--fg);font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans JP",sans-serif;overscroll-behavior:none}
+  *{box-sizing:border-box;touch-action:manipulation}
+  #root{position:fixed;inset:0;display:grid;place-items:center;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
+  #game-wrap{
+    width:min(100vw, 100vh*9/16);
+    height:min(100vh, 100vw*16/9);
+    max-width:100vw; max-height:100vh;
+    aspect-ratio:16/9; position:relative; border:1px solid #0e1522; border-radius:16px; overflow:hidden;
+    background:#000; box-shadow:0 12px 40px rgba(0,0,0,.45);
+  }
+  canvas{position:absolute; inset:0; width:100%; height:100%; image-rendering:pixelated;}
+  header.hud{
+    position:absolute; left:0; right:0; top:0;
+    padding:8px 10px; display:flex; gap:8px; align-items:center; justify-content:space-between;
+    background:var(--hud); backdrop-filter:blur(6px); font-weight:600
+  }
+  .hud-group{display:flex; gap:10px; align-items:center; flex-wrap:wrap}
+  .pill{background:#111826; border:1px solid #192235; padding:6px 10px; border-radius:999px; display:flex; gap:8px; align-items:center}
+  .hpbar{width:140px; height:10px; background:#1a2233; border:1px solid #26324a; border-radius:999px; overflow:hidden}
+  .hpfill{height:100%; background:linear-gradient(90deg,#3df085,#10c9c3); width:100%}
+  .coin{display:inline-flex; align-items:center; gap:6px}
+  .dot{width:10px;height:10px;border-radius:50%;}
+  .baseL{background:#53d6ff}.baseR{background:#ff9f54}
+  .pause{opacity:.8}
+  footer.ui{
+    position:absolute; left:0; right:0; bottom:0;
+    padding:10px; display:flex; gap:8px; align-items:center; justify-content:center; flex-wrap:wrap;
+    background:var(--hud); backdrop-filter:blur(6px)
+  }
+  button.spawn{
+    min-width:140px; padding:10px 12px; border-radius:12px;
+    background:#111826; color:var(--fg); border:1px solid #1e2a42; cursor:pointer;
+    box-shadow:inset 0 -2px 0 rgba(255,255,255,.04);
+  }
+  button.spawn:active{transform:translateY(1px)}
+  .cost{opacity:.8; font-size:.9em}
+  .right-note{position:absolute; right:8px; bottom:56px; opacity:.6; font-size:.85em}
+  .toast{
+    position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
+    padding:14px 18px; background:#0f1626cc; border:1px solid #243150; border-radius:12px; font-weight:700;
+    letter-spacing:.05em; display:none
+  }
+  .visible{display:block}
+</style>
+</head>
+<body>
+<div id="root">
+  <div id="game-wrap">
+    <header class="hud">
+      <div class="hud-group">
+        <span class="pill"><span class="dot baseL"></span>自軍 <span class="hpbar"><span id="hpL" class="hpfill"></span></span></span>
+        <span class="pill"><span class="dot baseR"></span>敵軍 <span class="hpbar"><span id="hpR" class="hpfill" style="background:linear-gradient(90deg,#ffcf5a,#ff6b6b)"></span></span></span>
+      </div>
+      <div class="hud-group">
+        <span class="pill coin">💰<span id="coins">0</span></span>
+        <span class="pill">⏱ <span id="time">0:00</span></span>
+        <span id="pauseMark" class="pill pause" style="display:none">⏸ PAUSED</span>
+      </div>
+    </header>
+
+    <canvas id="game"></canvas>
+
+    <div class="toast" id="toast">勝利！</div>
+
+    <footer class="ui" id="ui">
+      <button class="spawn" data-type="mob">① MOBファイター<br><span class="cost">Cost 90</span></button>
+    </footer>
+    <div class="right-note">操作: 1 出撃・P 一時停止</div>
+  </div>
+</div>
+
+<script>
+(() => {
+  // ---------- Load Images ----------
+  const IMGS = {};
+  const files = ['EN1-1.png','EN1-2.png','EN1-3.png','EN1-4.png','EN1-5.png','doro.png','sora.png'];
+  let loaded = 0;
+  function loadAll(onDone){
+    files.forEach(f=>{
+      const img = new Image(); img.src = f;
+      img.onload = ()=>{ IMGS[f]=img; if(++loaded===files.length) onDone(); };
+      img.onerror = ()=>{ console.warn('画像読み込み失敗:', f); if(++loaded===files.length) onDone(); };
+    });
+  }
+
+  // ---------- Canvas & Scale ----------
+  const cvs = document.getElementById('game');
+  const ctx = cvs.getContext('2d');
+  const wrap = document.getElementById('game-wrap');
+  let DPR = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+  const WORLD_W = 3200;
+  const WORLD_H = 720;
+
+  function resize() {
+    const w = wrap.clientWidth, h = wrap.clientHeight;
+    cvs.width = Math.floor(w * DPR);
+    cvs.height = Math.floor(h * DPR);
+    ctx.setTransform(DPR,0,0,DPR,0,0);
+  }
+  addEventListener('resize', () => { DPR = Math.max(1, Math.min(2, devicePixelRatio||1)); resize(); });
+
+  // ---------- Game State ----------
+  const state = {
+    time: 0,
+    coins: 100,
+    paused: false,
+    over: false,
+    cameraX: 0,
+    bases: {
+      L: { x: 80,  y: WORLD_H-140, w: 80, h: 120, hp: 1000, hpMax: 1000, color:'#53d6ff' },
+      R: { x: WORLD_W-160, y: WORLD_H-140, w: 80, h: 120, hp: 1000, hpMax: 1000, color:'#ff9f54' },
+    },
+    units: [],
+    particles: [],
+    lastSpawnCPU: 0
+  };
+
+  // ---------- HUD ----------
+  const hpL = document.getElementById('hpL');
+  const hpR = document.getElementById('hpR');
+  const coinsEl = document.getElementById('coins');
+  const timeEl = document.getElementById('time');
+  const pauseMark = document.getElementById('pauseMark');
+  const toast = document.getElementById('toast');
+
+  function fmtTime(s){ s|=0; const m=(s/60)|0; const ss=(s%60).toString().padStart(2,'0'); return `${m}:${ss}`; }
+  function updateHUD(){
+    coinsEl.textContent = state.coins|0;
+    timeEl.textContent = fmtTime(state.time);
+    hpL.style.width = `${Math.max(0,(state.bases.L.hp/state.bases.L.hpMax)*100)}%`;
+    hpR.style.width = `${Math.max(0,(state.bases.R.hp/state.bases.R.hpMax)*100)}%`;
+  }
+
+  // ---------- MOBファイター（1種） ----------
+  // 立ち: EN1-1 / 移動: EN1-2, EN1-3 / 攻撃: EN1-4, EN1-5
+  const MOB = {
+    w: 64, h: 64,          // 画面上サイズ（適宜調整OK）
+    spd: 48,               // 前進速度
+    range: 42,             // 近接レンジ
+    atk: 22,               // ダメージ
+    aspd: 1.2,             // ★攻撃速度（遅め指定）＝攻撃間隔
+    hp: 220,               // 体力
+    cost: 90,
+    name: 'MOBファイター',
+    frames: {
+      idle: ['EN1-1.png'],
+      walk: ['EN1-2.png','EN1-3.png'],
+      attack: ['EN1-4.png','EN1-5.png']
+    },
+    animSpeed: { idle: 0.7, walk: 0.18, attack: 0.22 } // フレーム切替間隔
+  };
+
+  const TYPES = { mob: MOB };
+
+  // ---------- Spawning ----------
+  function spawn(side, typeKey){
+    if(state.over) return;
+    const T = TYPES[typeKey]; if(!T) return;
+    if(side==='L' && state.coins < T.cost) return;
+    if(side==='L') state.coins -= T.cost;
+
+    const base = side==='L'? state.bases.L : state.bases.R;
+    const dir = side==='L'? 1 : -1;
+    state.units.push({
+      side, type: typeKey,
+      x: base.x + (side==='L'? base.w+6 : -6),
+      y: WORLD_H - 80, // 地面ライン（地面は描画時に表示）
+      w:T.w, h:T.h, vx:T.spd*dir,
+      range:T.range, atk:T.atk, aspd:T.aspd, cd:0,
+      hp:T.hp, hpMax:T.hp, hurtT:0, dying:false, dead:false, t:0,
+      phase:'idle', fIdx:0, fTimer:0
+    });
+  }
+
+  // ---------- CPU AI ----------
+  function cpuThink(dt){
+    state.lastSpawnCPU += dt;
+    const interval = 1.8; // 遅め出撃
+    if(state.lastSpawnCPU > interval){
+      state.lastSpawnCPU = 0;
+      spawn('R','mob');
+    }
+  }
+
+  // ---------- Helpers ----------
+  function inRange(a,b){ return Math.abs(a.x - b.x) <= a.range + (a.w*0.5 + (b.w? b.w*0.5 : 0)); }
+  function hitFlash(u){ u.hurtT = 0.18; }
+  function knockback(u, dir){ u.x += dir * -14; }
+  function spark(x,y){ state.particles.push({x,y, vx:(Math.random()*60-30), vy:(-40 - Math.random()*40), a:1, t:0}); }
+
+  // ---------- Update ----------
+  let last = performance.now();
+  function loop(now){
+    const dt = Math.min(0.033, (now - last)/1000); last = now;
+    if(!state.paused && !state.over){
+      state.time += dt;
+      state.coins = Math.min(9999, state.coins + 12*dt);
+      cpuThink(dt);
+      update(dt);
+    }
+    draw();
+    requestAnimationFrame(loop);
+  }
+
+  function update(dt){
+    const L = state.units.filter(u=>u.side==='L' && !u.dead);
+    const R = state.units.filter(u=>u.side==='R' && !u.dead);
+
+    for(const u of state.units){
+      if(u.dead) continue;
+      u.t += dt; if(u.hurtT>0) u.hurtT -= dt;
+      u.cd -= dt;
+
+      // 目標探索
+      const enemies = u.side==='L'? R : L;
+      let target = null, minD = 1e9;
+      for(const e of enemies){ const d = Math.abs(u.x - e.x); if(d < minD){ minD=d; target=e; } }
+      const theirBase = u.side==='L'? state.bases.R : state.bases.L;
+      const baseDist = Math.abs(u.x - (theirBase.x + (u.side==='L'? 0 : theirBase.w)));
+
+      let canAttack = false;
+      if(target && inRange(u,target)) canAttack = true;
+      else if(baseDist <= u.range + u.w*0.5){ canAttack = true; target = theirBase; }
+
+      // フェーズ制御
+      if(canAttack){
+        u.phase = 'attack';
+        if(u.cd <= 0){
+          u.cd = u.aspd; // 遅め攻撃間隔
+          damage(target, u.atk, u.side);
+          spark(u.x + (u.side==='L'? u.w*0.5 : -u.w*0.5), u.y - u.h*0.6);
+        }
+      }else{
+        u.phase = (Math.abs(u.vx)>0)? 'walk' : 'idle';
+        u.x += (u.vx * dt);
+      }
+
+      // 画面外制限
+      u.x = Math.max(0, Math.min(WORLD_W - u.w, u.x));
+
+      // 死亡演出
+      if(u.dying){
+        u.t += dt; if(u.t>0.6) u.dead = true;
+      }
+
+      // アニメーション
+      const T = TYPES[u.type];
+      const seq = T.frames[u.phase] || T.frames.idle;
+      const spd = T.animSpeed[u.phase] || 0.25;
+      u.fTimer += dt;
+      if(u.fTimer >= spd){ u.fTimer = 0; u.fIdx = (u.fIdx+1) % seq.length; }
+    }
+
+    // 粒子
+    for(const p of state.particles){
+      p.t += dt; p.x += p.vx*dt; p.y += p.vy*dt; p.vy += 220*dt; p.a -= 2*dt;
+    }
+    state.particles = state.particles.filter(p=>p.a>0);
+
+    // 決着
+    if(state.bases.L.hp <= 0 || state.bases.R.hp <= 0){
+      state.over = true;
+      toast.textContent = state.bases.R.hp<=0 ? '勝利！' : '敗北…';
+      toast.classList.add('visible');
+    }
+
+    // カメラ
+    const all = state.units.filter(u=>!u.dead);
+    const midX = all.length? (all.reduce((s,u)=>s+u.x,0)/all.length) : WORLD_W/2;
+    const viewW = wrap.clientWidth;
+    state.cameraX = Math.max(0, Math.min(WORLD_W - viewW, midX - viewW*0.5));
+
+    updateHUD();
+  }
+
+  // ベース含めたダメージ関数
+  function damage(target, amount, fromSide){
+    if(target===state.bases.L || target===state.bases.R){
+      target.hp -= amount;
+      spark((target===state.bases.R? target.x : target.x+target.w), target.y);
+      return;
+    }
+    if(target.dying || target.dead) return;
+    target.hp -= amount; hitFlash(target); knockback(target, fromSide==='L'? 1 : -1);
+    if(target.hp <= 0){ target.dying = true; target.t = 0; }
+  }
+
+  // ---------- Draw ----------
+  function draw(){
+    const w = wrap.clientWidth, h = wrap.clientHeight;
+    ctx.clearRect(0,0,w,h);
+
+    // 背景（sora.png 全面）
+    const sky = IMGS['sora.png'];
+    if(sky){ ctx.drawImage(sky, 0, 0, w, h); }
+    else { // 予備
+      const grad = ctx.createLinearGradient(0,0,0,h);
+      grad.addColorStop(0,'#0b1222'); grad.addColorStop(1,'#0a0f1d');
+      ctx.fillStyle = grad; ctx.fillRect(0,0,w,h);
+    }
+
+    // 地面テクスチャ（doro.png）を横ループ
+    const cam = state.cameraX;
+    const groundY = h - 80;
+    const doro = IMGS['doro.png'];
+    if(doro){
+      const tileW = doro.width, tileH = doro.height;
+      const scale = 80 / tileH; // 高さ合わせ
+      const drawW = tileW * scale, drawH = tileH * scale;
+      let startX = -((cam*0.8) % drawW) - drawW;
+      for(let x=startX; x<w+drawW; x+=drawW){
+        ctx.drawImage(doro, x, groundY, drawW, drawH);
+      }
+    } else {
+      ctx.fillStyle = '#0f1626'; ctx.fillRect(0, groundY, w, 80);
+    }
+
+    // メモリライン（軽いパララックス）
+    ctx.save(); ctx.translate(-cam,0);
+    for(let x=0; x<=WORLD_W; x+=100){
+      const sx = x;
+      if(sx+5<-10 || sx-5>w+10) continue;
+      ctx.fillStyle = (x%500===0)? '#1f335a' : '#172744';
+      ctx.fillRect(sx, groundY, 2, 12);
+    }
+
+    // 拠点
+    for(const key of ['L','R']){
+      const b = state.bases[key];
+      const sx = b.x, sy = groundY - b.h;
+      ctx.fillStyle = '#0f1b33'; ctx.fillRect(sx, sy, b.w, b.h);
+      ctx.fillStyle = b.color;   ctx.fillRect(sx+6, sy+6, b.w-12, b.h-12);
+      const ratio = Math.max(0, b.hp/b.hpMax);
+      ctx.fillStyle = '#101626'; ctx.fillRect(sx, sy-12, b.w, 8);
+      ctx.fillStyle = key==='L' ? '#3df085' : '#ff6b6b';
+      ctx.fillRect(sx, sy-12, b.w*ratio, 8);
+    }
+
+    // 粒子
+    for(const p of state.particles){
+      ctx.globalAlpha = Math.max(0, Math.min(1, p.a));
+      ctx.fillStyle = '#ffcf5a';
+      ctx.fillRect(p.x - cam, p.y, 3,3);
+      ctx.globalAlpha = 1;
+    }
+
+    // ユニット（スプライト描画）
+    for(const u of state.units){
+      if(u.dead) continue;
+      const T = TYPES[u.type];
+      const seq = T.frames[u.phase] || T.frames.idle;
+      const frameName = seq[u.fIdx] || seq[0];
+      const sprite = IMGS[frameName];
+
+      const sx = u.x - cam, sy = groundY - u.h;
+
+      ctx.save();
+      if(u.dying){
+        const t = Math.min(1, u.t/0.6);
+        ctx.globalAlpha = 1 - t;
+        ctx.translate(sx + u.w/2, sy + u.h/2);
+        ctx.rotate((u.side==='L'?1:-1) * t * 10);
+        ctx.translate(-u.w/2, -u.h/2);
+      } else {
+        ctx.translate(sx, sy);
+      }
+
+      // 影
+      ctx.globalAlpha = 0.25;
+      ctx.fillStyle = '#000'; ctx.fillRect(6, u.h-6, u.w-12, 4);
+      ctx.globalAlpha = 1;
+
+      // 本体（左右反転で向き調整）
+      if(sprite){
+        const flip = (u.side==='R'); // 右軍は左向き=反転
+        if(flip){
+          ctx.translate(u.w,0);
+          ctx.scale(-1,1);
+        }
+        // 被弾赤点滅
+        if(u.hurtT>0){
+          ctx.globalAlpha = 0.55;
+          ctx.fillStyle = '#ff6b6b';
+          ctx.fillRect(0,0,u.w,u.h);
+          ctx.globalAlpha = 1;
+        }
+        ctx.drawImage(sprite, 0, 0, u.w, u.h);
+      }else{
+        // 予備：四角
+        ctx.fillStyle = u.hurtT>0 ? '#ff6b6b' : '#a2ff86';
+        ctx.fillRect(0,0,u.w,u.h);
+      }
+
+      // HPバー
+      const r = Math.max(0, u.hp/u.hpMax);
+      ctx.fillStyle = '#101626'; ctx.fillRect(0,-6,u.w,4);
+      ctx.fillStyle = '#3df085'; ctx.fillRect(0,-6,u.w*r,4);
+
+      ctx.restore();
+    }
+
+    ctx.restore();
+
+    if(state.paused){
+      ctx.fillStyle = 'rgba(0,0,0,.35)'; ctx.fillRect(0,0,w,h);
+    }
+  }
+
+  // ---------- Input ----------
+  document.getElementById('ui').addEventListener('click', (e)=>{
+    const btn = e.target.closest('.spawn'); if(!btn) return;
+    spawn('L', btn.dataset.type);
+  });
+  addEventListener('keydown', (e)=>{
+    if(e.repeat) return;
+    if(e.key==='1') spawn('L','mob');
+    if(e.key.toLowerCase()==='p'){ state.paused=!state.paused; pauseMark.style.display = state.paused?'':'none'; }
+  });
+
+  // ---------- Start after images ready ----------
+  loadAll(()=>{ resize(); updateHUD(); requestAnimationFrame(loop); });
+})();
+</script>
+</body>
+</html>

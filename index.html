@@ -3,21 +3,19 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
-<title>MOB TD – グリッド分離版（テスト調整）</title>
+<title>MOB TD – グリッド分離版（2段攻撃＋ワルMOB追加）</title>
 <meta name="theme-color" content="#0b0c10" />
 <style>
   :root{
     --app-w: 420px;
     --row-hud: 56px;
-    --row-controls: 160px;
+    --row-controls: 200px; /* 3カード分少し高く */
     --hud-bg: #0e1118f0;
     --hud-fg: #eaf3ff;
     --hud-accent: #4dd0ff;
     --panel-bg: #0b1424f2;
     --panel-stroke: #1b2a44;
     --panel-shadow: 0 10px 28px rgba(0,0,0,.4);
-    --hp-green: #4caf50;
-    --hp-red:   #ef5350;
   }
   html,body{height:100%;margin:0;background:#000;color:#fff;font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Hiragino Kaku Gothic ProN",Meiryo,sans-serif;overscroll-behavior:none}
   *{box-sizing:border-box}
@@ -31,6 +29,8 @@
     border:1px solid #0e1522; border-radius:18px; overflow:hidden;
     box-shadow:0 14px 48px rgba(0,0,0,.55);
   }
+
+  /* HUD */
   header.hud{
     display:flex; align-items:center; gap:8px;
     padding:8px 10px calc(8px + env(safe-area-inset-top)) 10px;
@@ -47,6 +47,8 @@
   .spacer{flex:1}
   .tiny{font-size:12px; opacity:.9}
   .clickable{cursor:pointer}
+
+  /* プレイ領域（Canvasのみ） */
   main.play{position:relative; background:#000;}
   #view{position:absolute; inset:0; width:100%; height:100%; image-rendering:pixelated; display:block;}
   .center-msg{
@@ -54,12 +56,19 @@
     padding:8px 12px; border-radius:10px; background:#00000099; border:1px solid #24324f;
     font-size:12px; text-align:center; pointer-events:none;
   }
+
+  /* 操作パネル */
   footer.controls{
     padding:10px 10px calc(12px + env(safe-area-inset-bottom)) 10px;
     background:linear-gradient(to top,#091323,#0b1424cc);
     border-top:1px solid #0f1b2e;
   }
-  .grid2{height:100%; display:grid; grid-template-columns:1fr 1fr; gap:10px;}
+  .grid3{
+    height:100%;
+    display:grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap:10px;
+  }
   .card{
     background:var(--panel-bg); color:#e7f1ff;
     border:1px solid var(--panel-stroke); border-radius:14px; padding:10px;
@@ -80,32 +89,41 @@
 <body>
 <div id="root">
   <div id="app">
+    <!-- HUD -->
     <header class="hud">
       <div class="pill" id="coinBox">💰 <b id="coins">0</b></div>
-      <div class="pill tiny" id="income">+8 / 3s</div>
+      <div class="pill tiny">+8 / 3s</div>
       <div class="spacer"></div>
-      <div class="pill tiny" id="fpsBox">FPS: <b id="fps">60</b></div>
+      <div class="pill tiny">FPS: <b id="fps">60</b></div>
       <div class="pill tiny clickable" id="pausePill">⏸ Pause</div>
     </header>
 
+    <!-- プレイ領域 -->
     <main class="play">
       <canvas id="view"></canvas>
       <div class="center-msg" id="msg">下のボタンでユニットを出撃できます</div>
     </main>
 
+    <!-- 操作パネル（3カード） -->
     <footer class="controls">
-      <div class="grid2">
+      <div class="grid3">
         <div class="card">
           <h3>MOB段ボール</h3>
           <div class="cost">コスト <b>50</b> / HP150 / 近接</div>
           <button class="btn" id="btnBox">出撃</button>
-          <div class="hint">C1〜C4.png を使用</div>
+          <div class="hint">C1〜C4.png</div>
         </div>
         <div class="card">
           <h3>MOBファイター</h3>
           <div class="cost">コスト <b>120</b> / HP120 / 近接（速）</div>
           <button class="btn" id="btnFtr">出撃</button>
-          <div class="hint">EN1-1〜EN1-5.png を使用</div>
+          <div class="hint">EN1-1〜EN1-5.png</div>
+        </div>
+        <div class="card">
+          <h3>ワルMOB</h3>
+          <div class="cost">コスト <b>30</b> / HP100 / 近接（中速）</div>
+          <button class="btn" id="btnEvil">出撃</button>
+          <div class="hint">teki1〜3.png</div>
         </div>
       </div>
     </footer>
@@ -114,14 +132,15 @@
 
 <script>
 (() => {
-  // ====== 画像パス（同フォルダ） ======
+  // ====== アセットパス ======
   const IMAGES = {
     bg: "sora.png",
     floor: "doro.png",
     towerL: "T1.png",
     towerR: "T2.png",
-    BOX: { idle:"C1.png", walk:["C2.png","C3.png"], atk:"C4.png" }, // 段ボールは攻撃1枚
-    FTR: { idle:"EN1-1.png", walk:["EN1-2.png","EN1-3.png"], atk:["EN1-4.png","EN1-5.png"] }
+    BOX:  { idle:"C1.png",    walk:["C2.png","C3.png"],      atk:"C4.png" },                 // 攻撃は1枚
+    FTR:  { idle:"EN1-1.png", walk:["EN1-2.png","EN1-3.png"], atk:["EN1-4.png","EN1-5.png"] }, // 攻撃2枚
+    TEKI: { idle:"teki1.png", walk:["teki1.png","teki2.png"], atk:"teki3.png" }                // ワルMOB
   };
 
   // ====== DOM ======
@@ -132,7 +151,7 @@
   const fpsEl = document.getElementById("fps");
   const msgEl = document.getElementById("msg");
 
-  // ====== プレイ領域に合わせたキャンバス ======
+  // ====== キャンバスサイズ（プレイ領域に追従） ======
   let W = 420, H = 560;
   function measure(){
     const r = playEl.getBoundingClientRect();
@@ -144,7 +163,7 @@
   measure();
   addEventListener("resize", measure);
 
-  // ====== 幾何（地面をプレイ領域下部に固定） ======
+  // ====== 幾何（フロアは下部固定） ======
   function geom(){
     const groundBandH = Math.round(H * 0.22);
     const groundTopY  = H - groundBandH;
@@ -154,20 +173,21 @@
     return { groundBandH, groundTopY, GROUND_Y, L_TOWER_X, R_TOWER_X };
   }
 
-  // ====== 定数 ======
+  // ====== パラメータ ======
   const COIN_TICK = 3000, COIN_ADD = 8;
   const MELEE_RANGE = 26;
   const PX_PER_SPEED = 18;
   const WALK_FPS = 6, ATK_FPS = 7;
 
-  // 段ボールの「立ち絵→攻撃」演出長さ
-  const BOX_ATK_IDLE_PHASE = 0.18; // 攻撃開始からこの時間は立ち絵を表示
-  const BOX_ATK_TOTAL      = 0.36; // 1サイクルの目安（描画側のみ）
+  // 2段攻撃の演出時間（共通）
+  const ATK_IDLE_PHASE = 0.18; // 最初のこの時間は「立ち絵」
+  const ATK_TOTAL      = 0.36; // 1サイクルの目安（描画用）
 
   // ====== ユニット定義 ======
   const UNIT_KINDS = {
-    BOX: { name:"MOB段ボール", hp:150, atk:20, atkInt:1.0, speed:3, cost:50, imgs:"BOX", scale:0.6 },
-    FTR: { name:"MOBファイター", hp:120, atk:30, atkInt:0.7, speed:5, cost:120, imgs:"FTR", scale:0.6 }
+    BOX:  { name:"MOB段ボール", hp:150, atk:20, atkInt:1.0, speed:3, cost:50,  key:"BOX",  scale:0.6 },
+    FTR:  { name:"MOBファイター", hp:120, atk:30, atkInt:0.7, speed:5, cost:120, key:"FTR",  scale:0.6 },
+    TEKI: { name:"ワルMOB",      hp:100, atk:15, atkInt:1.0, speed:3, cost:30,  key:"TEKI", scale:0.6 }
   };
 
   // ====== 画像読み込み ======
@@ -180,7 +200,7 @@
     assets.floor = await loadImage(IMAGES.floor);
     assets.towerL = await loadImage(IMAGES.towerL);
     assets.towerR = await loadImage(IMAGES.towerR);
-    for(const key of ["BOX","FTR"]){
+    for(const key of ["BOX","FTR","TEKI"]){
       const set = IMAGES[key];
       assets[key] = { idle:null, walk:[], atk:[] };
       assets[key].idle = await loadImage(set.idle);
@@ -190,7 +210,7 @@
   }
 
   // ====== 状態 ======
-  let coins = 500;                 // ★ テスト用：初期500コイン
+  let coins = 500; // テスト用スタート
   let lastCoinTick = 0, paused = false;
   let lastTime = performance.now(), fpsSmoothed = 60;
 
@@ -200,10 +220,11 @@
   const allies = [], enemies = [];
   const hits = [];
 
+  // 敵はMOB段ボールを1体ずつ（既存仕様そのまま）
   let enemyQueue = [{kind:"BOX"},{kind:"BOX"},{kind:"BOX"},{kind:"BOX"},{kind:"BOX"}];
   let enemyActive = false;
 
-  // ====== 色補間 ======
+  // ====== 補助 ======
   function mixHex(a,b,t){
     function toRGB(h){const n=parseInt(h.slice(1),16);return {r:(n>>16)&255,g:(n>>8)&255,b:n&255}}
     function toHex(r,g,b){return "#"+[r,g,b].map(v=>v.toString(16).padStart(2,"0")).join("")}
@@ -256,7 +277,7 @@
         if(this.cool===0){
           this.state="atk";
           this.animT=0;
-          // ダメージは即時適用（視覚は「立ち→攻撃」で表現）
+          // ダメージは即時適用（見た目は2段演出）
           if(target.hp!==undefined){ target.hp -= this.atk; flash(target); }
           this.cool = this.atkInt;
         }
@@ -276,20 +297,23 @@
 
     draw(ctx){
       if(this.state==="dead") return;
-      const A = assets[this.kind];
+      const A = assets[UNIT_KINDS[this.kind].key];
       let img=null;
 
       if(this.state==="walk"){
+        // 歩行は定義された配列をそのまま使用（ワルMOBは idle→teki2 の2枚）
         img = A.walk[Math.floor(this.animT*WALK_FPS)%Math.max(1,A.walk.length)] || A.idle;
 
       }else if(this.state==="atk"){
-        if(this.kind==="BOX"){
-          // ★ 段ボール専用：「立ち絵 → 攻撃」2段演出
-          const phase = this.animT % (BOX_ATK_TOTAL);
-          img = (phase < BOX_ATK_IDLE_PHASE) ? A.idle : (A.atk[0] || A.idle);
+        // 共通：最初は立ち絵→その後は攻撃フレーム
+        const phase = this.animT % ATK_TOTAL;
+        if(phase < ATK_IDLE_PHASE){
+          img = A.idle;
         }else{
-          // 他は通常どおり攻撃アニメをループ
-          img = A.atk[Math.floor(this.animT*ATK_FPS)%Math.max(1,A.atk.length)] || A.idle;
+          // 攻撃フレーム（1枚でも複数でもOK）
+          const len = Math.max(1, A.atk.length);
+          const idx = Math.floor((phase-ATK_IDLE_PHASE) / (ATK_TOTAL-ATK_IDLE_PHASE) * len) % len;
+          img = A.atk[idx] || A.idle;
         }
 
       }else{
@@ -363,7 +387,7 @@
       ctx.fillStyle="#08111f"; ctx.fillRect(0,0,W,H);
     }
 
-    // フロア帯（下部に固定）
+    // フロア（下部固定）
     if(assets.floor){
       const fh = g.groundBandH;
       const y  = g.groundTopY;
@@ -429,6 +453,7 @@
   }
   document.getElementById("btnBox").addEventListener("click", ()=>spawnAlly("BOX"));
   document.getElementById("btnFtr").addEventListener("click", ()=>spawnAlly("FTR"));
+  document.getElementById("btnEvil").addEventListener("click", ()=>spawnAlly("TEKI"));
   document.getElementById("pausePill").addEventListener("click", ()=>{
     paused = !paused;
     document.getElementById("pausePill").textContent = paused ? "▶ Resume" : "⏸ Pause";

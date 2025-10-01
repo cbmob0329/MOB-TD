@@ -3,13 +3,13 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
-<title>MOB TD – ゴレム追加（壁＋短距離投射）</title>
+<title>MOB TD – アイスロボ追加（溜め→発射＆ホップ移動）</title>
 <meta name="theme-color" content="#0b0c10" />
 <style>
   :root{
     --app-w: 420px;
     --row-hud: 52px;
-    --row-controls: 176px; /* 3列×2段が入る高さに微調整 */
+    --row-controls: 176px; /* 3列×2段が入る高さ */
     --hud-bg: #0e1118f0;
     --hud-fg: #eaf3ff;
     --hud-accent: #4dd0ff;
@@ -57,12 +57,12 @@
     font-size:12px; text-align:center; pointer-events:none;
   }
 
-  /* ===== 操作パネル（3列にして2段に収める／低背化） ===== */
+  /* ===== 操作パネル（3列×2段・低背） ===== */
   footer.controls{
     padding:8px 8px calc(10px + env(safe-area-inset-bottom)) 8px;
     background:linear-gradient(to top,#091323,#0b1424cc);
     border-top:1px solid #0f1b2e;
-    overflow:auto; /* 端末が極端に低い場合もスクロールで使える */
+    overflow:auto; /* 低い端末でもスクロールでOK */
   }
   .grid3{
     height:100%;
@@ -106,7 +106,7 @@
       <div class="center-msg" id="msg">下のボタンでユニットを出撃できます</div>
     </main>
 
-    <!-- ===== 操作パネル（3列） ===== -->
+    <!-- ===== 操作パネル（3列×2段） ===== -->
     <footer class="controls">
       <div class="grid3">
         <div class="card">
@@ -139,6 +139,12 @@
           <button class="btn" id="btnGolem">出撃</button>
           <div class="hint">R1〜R5.png</div>
         </div>
+        <div class="card">
+          <h3>MOBアイスロボ</h3>
+          <div class="cost">コスト <b>200</b> / HP900 / 中距離140px</div>
+          <button class="btn" id="btnIce">出撃</button>
+          <div class="hint">I1〜I5.png, I8.png</div>
+        </div>
       </div>
     </footer>
   </div>
@@ -158,8 +164,9 @@
     TEKI:  { idle:"teki1.png", walk:["teki1.png","teki2.png"], atk:"teki3.png", proj:"teki7.png" },
     WIZ:   { idle:"MOBM.png",  walk:["MOBM2.png"],             atk:"MOBM3.png" },
     GOLEM: { idle:"R1.png",    walk:["R1.png","R2.png","R3.png"], atk:"R4.png", proj:"R5.png" },
+    ICE:   { idle:"I1.png",    walk:["I2.png","I3.png"],      atk:"I5.png", charge:"I4.png" },
 
-    PROJ: { magic:"mahou1.png", short:"teki7.png", golem:"R5.png" }
+    PROJ: { magic:"mahou1.png", short:"teki7.png", golem:"R5.png", ice:"I8.png" }
   };
 
   // ====== DOM ======
@@ -197,29 +204,39 @@
   const PX_PER_SPEED = 18;          // px/s
   const WALK_FPS = 6, ATK_FPS = 7;
   const MELEE_RANGE = 26;
-  const ATK_IDLE_PHASE = 0.18;      // 2段攻撃：立ち絵時間
-  const ATK_TOTAL      = 0.36;      // 2段攻撃：総時間（描画用）
+  const RANGE_MEDIUM = 140;
+  const ATK_IDLE_PHASE = 0.18;      // 多くのユニットで「立ち→攻撃」切替に使用
+  const ATK_TOTAL      = 0.36;      // 一般の攻撃ビジュアル周期（描画用）
 
   // Projectile params
   const PROJ_SPEED_WIZ   = 230;   // ウィザード弾
   const PROJ_SPEED_SHORT = 200;   // ワルMOB短距離弾
-  const PROJ_SPEED_GOLEM = 180;   // ゴレムの近距離投射
+  const PROJ_SPEED_GOLEM = 180;   // ゴレム近距離投射
+  const PROJ_SPEED_ICE   = 200;   // アイスロボの弾
   const PROJ_HIT_R = 16;
 
-  // ゴレムの壁判定距離と減速率
+  // ゴレムの壁
   const GOLEM_BLOCK_DIST = 26;
-  const GOLEM_SLOW_RATE  = 0.25;  // 25%まで減速
+  const GOLEM_SLOW_RATE  = 0.25;
+
+  // アイスロボ：溜め可視時間（この経過で発射）、溜め時の最大小ささ→大きさ
+  const ICE_CHARGE_TIME  = 0.50;  // 秒（発射タイミング）
+  const ICE_CHARGE_MIN_S = 0.18;  // スケール最小
+  const ICE_CHARGE_MAX_S = 1.0;   // スケール最大
+  const HOP_AMP = 8;              // ホップの高さ(px)
 
   // ====== ユニット定義 ======
   const UNIT_KINDS = {
-    BOX:   { name:"MOB段ボール",  hp:150, atk:20, atkInt:1.0, speed:3, cost:50,  key:"BOX",   rangePx:MELEE_RANGE, scale:0.6,  hover:false, proj:null },
-    FTR:   { name:"MOBファイター", hp:120, atk:30, atkInt:0.7, speed:5, cost:120, key:"FTR",   rangePx:MELEE_RANGE, scale:0.6,  hover:false, proj:null },
-    TEKI:  { name:"ワルMOB",       hp:100, atk:15, atkInt:1.0, speed:3, cost:30,  key:"TEKI",  rangePx:80,           scale:0.6,  hover:false,
+    BOX:   { name:"MOB段ボール",  hp:150, atk:20,  atkInt:1.0, speed:3, cost:50,  key:"BOX",   rangePx:MELEE_RANGE, scale:0.6,  hover:false, hop:false, proj:null },
+    FTR:   { name:"MOBファイター", hp:120, atk:30,  atkInt:0.7, speed:5, cost:120, key:"FTR",   rangePx:MELEE_RANGE, scale:0.6,  hover:false, hop:false, proj:null },
+    TEKI:  { name:"ワルMOB",       hp:100, atk:15,  atkInt:1.0, speed:3, cost:30,  key:"TEKI",  rangePx:80,           scale:0.6,  hover:false, hop:false,
              proj:{ imgKey:"short", speed:PROJ_SPEED_SHORT, maxTravel:120, wobble:true } },
-    WIZ:   { name:"MOB ウィザード", hp:200, atk:80, atkInt:2.6, speed:2, cost:200, key:"WIZ",  rangePx:200,          scale:0.66, hover:true,
+    WIZ:   { name:"MOB ウィザード", hp:200, atk:80, atkInt:2.6, speed:2, cost:200, key:"WIZ",  rangePx:200,          scale:0.66, hover:true,  hop:false,
              proj:{ imgKey:"magic", speed:PROJ_SPEED_WIZ,   maxTravel:null, wobble:false } },
-    GOLEM: { name:"MOBゴレムロボ", hp:600, atk:10, atkInt:1.5, speed:1, cost:100, key:"GOLEM", rangePx:MELEE_RANGE,  scale:0.75, hover:false,
-             proj:{ imgKey:"golem", speed:PROJ_SPEED_GOLEM, maxTravel:90,  wobble:false } }
+    GOLEM: { name:"MOBゴレムロボ", hp:600, atk:10,  atkInt:1.5, speed:1, cost:100, key:"GOLEM", rangePx:MELEE_RANGE,  scale:0.75, hover:false, hop:false,
+             proj:{ imgKey:"golem", speed:PROJ_SPEED_GOLEM, maxTravel:90,  wobble:false } },
+    ICE:   { name:"MOBアイスロボ", hp:900, atk:100, atkInt:2.5, speed:1, cost:200, key:"ICE",  rangePx:RANGE_MEDIUM, scale:0.75, hover:false, hop:true,
+             proj:{ imgKey:"ice",   speed:PROJ_SPEED_ICE,   maxTravel:null, wobble:false, delayed:true } } // delayed: 溜めてから発射
   };
 
   // ====== 画像読み込み ======
@@ -233,18 +250,20 @@
     assets.towerL = await loadImage(IMAGES.towerL);
     assets.towerR = await loadImage(IMAGES.towerR);
 
-    for(const key of ["BOX","FTR","TEKI","WIZ","GOLEM"]){
+    for(const key of ["BOX","FTR","TEKI","WIZ","GOLEM","ICE"]){
       const set = IMAGES[key];
-      assets[key] = { idle:null, walk:[], atk:[] };
+      assets[key] = { idle:null, walk:[], atk:[], charge:null };
       assets[key].idle = await loadImage(set.idle);
       for(const s of (Array.isArray(set.walk)?set.walk:[set.walk])) assets[key].walk.push(await loadImage(s));
       for(const s of (Array.isArray(set.atk)?set.atk:[set.atk])) assets[key].atk.push(await loadImage(s));
+      if(set.charge) assets[key].charge = await loadImage(set.charge);
     }
     // projectile
     assets.PROJ = {};
     assets.PROJ.magic = await loadImage(IMAGES.PROJ.magic);
     assets.PROJ.short = await loadImage(IMAGES.PROJ.short);
     assets.PROJ.golem = await loadImage(IMAGES.PROJ.golem);
+    assets.PROJ.ice   = await loadImage(IMAGES.PROJ.ice);
   }
 
   // ====== 状態 ======
@@ -256,7 +275,7 @@
   const towerR = { x:0, y:0, hp:1200, side:-1 };
 
   const allies = [], enemies = [];
-  const projectiles = []; // 魔法弾など
+  const projectiles = [];
   const hits = [];
 
   // 敵は段ボールが1体ずつ
@@ -266,7 +285,7 @@
   // ====== 補助 ======
   function mixHex(a,b,t){
     function toRGB(h){const n=parseInt(h.slice(1),16);return {r:(n>>16)&255,g:(n>>8)&255,b:n&255}}
-    function toHex(r,g,b){return "#"+[r,g,b].map(v=>v.toString(16).padStart(2,"0")).join("")}
+    function toHex(r,g,b){return "#"+[r,g,b].map(v=>v.toString(16)).map(s=>s.padStart(2,"0")).join("")}
     const A=toRGB(a), B=toRGB(b);
     return toHex(
       Math.round(A.r*(1-t)+B.r*t),
@@ -317,7 +336,7 @@
       this._wobY = wobY;
     }
     draw(ctx){
-      const sz = 26;
+      const sz = 28;
       ctx.save();
       ctx.translate(this.x, (this.y - 28) + (this._wobY||0));
       ctx.rotate(this.angle);
@@ -340,8 +359,10 @@
       this.scale = def.scale;
       this.rangePx = def.rangePx;
       this.hover = !!def.hover;
-      this.proj = def.proj; // null または {imgKey, speed, maxTravel? , wobble?}
+      this.hop   = !!def.hop;   // アイスロボ：跳ねる
+      this.proj = def.proj;     // null または {imgKey, speed, maxTravel? , wobble?, delayed?}
       this.state = "walk"; this.animT = 0;
+      this.firePending = false; // 溜め撃ち（ICE用）
     }
     width(){ return 64*this.scale; }
     height(){ return 64*this.scale; }
@@ -360,14 +381,12 @@
       return {target:nearest, dist:best};
     }
 
-    // ゴレムの壁効果：相手の移動を減速させる（ゴレム以外のユニットに適用）
     static slowFactorNearGolem(unit){
       if(unit.kind==="GOLEM") return 1.0;
       const foes = unit.side>0 ? enemies : allies;
       for(const f of foes){
         if(f.state==="dead" || f.kind!=="GOLEM") continue;
         const dx = f.x - unit.x;
-        // 正面側にゴレムが近接しているか
         if(unit.side>0 && dx>=0 && dx<=GOLEM_BLOCK_DIST) return GOLEM_SLOW_RATE;
         if(unit.side<0 && dx<=0 && -dx<=GOLEM_BLOCK_DIST) return GOLEM_SLOW_RATE;
       }
@@ -380,19 +399,37 @@
       const { target, dist } = this.findTarget();
       const inRange = target && dist <= this.rangePx;
 
+      // 溜め撃ち（ICE）：アニメ中に発射
+      if(this.kind==="ICE" && this.state==="atk" && this.firePending && this.animT >= ICE_CHARGE_TIME){
+        projectiles.push(new Projectile({
+          x:this.x + (this.side>0?+12:-12), y:this.y,
+          side:this.side, atk:this.atk,
+          imgKey:this.proj.imgKey,
+          speed:this.proj.speed || 220,
+          maxTravel:this.proj.maxTravel ?? null,
+          wobble:!!this.proj.wobble
+        }));
+        this.firePending=false;
+      }
+
       if(inRange){
         if(this.cool===0){
           this.state="atk"; this.animT=0;
           if(this.proj){
-            // 投射：ヒット時にダメージ
-            projectiles.push(new Projectile({
-              x:this.x + (this.side>0?+10:-10), y:this.y,
-              side:this.side, atk:this.atk,
-              imgKey:this.proj.imgKey,
-              speed:this.proj.speed || 220,
-              maxTravel:this.proj.maxTravel ?? null,
-              wobble:!!this.proj.wobble
-            }));
+            if(this.kind==="ICE" && this.proj.delayed){
+              // ★ アイスロボは溜め→後で発射
+              this.firePending = true;
+            }else{
+              // 通常の投射（即発射）
+              projectiles.push(new Projectile({
+                x:this.x + (this.side>0?+10:-10), y:this.y,
+                side:this.side, atk:this.atk,
+                imgKey:this.proj.imgKey,
+                speed:this.proj.speed || 220,
+                maxTravel:this.proj.maxTravel ?? null,
+                wobble:!!this.proj.wobble
+              }));
+            }
           }else{
             // 近接：即時ダメージ
             if(target.hp!==undefined){ target.hp -= this.atk; flash(target); }
@@ -401,7 +438,6 @@
         }
       }else{
         this.state="walk";
-        // 壁（ゴレム）に近いなら減速
         let spd = this.speed * Unit.slowFactorNearGolem(this);
         this.x += this.side * spd * dt;
         const g = geom();
@@ -420,23 +456,31 @@
       const A = assets[UNIT_KINDS[this.kind].key];
       let img=null;
 
-      // 浮遊オフセット（hover時のみふわふわ）
-      const hoverY = this.hover ? Math.sin(performance.now()/1000 + this.x*0.01)*6 : 0;
+      // 浮遊（WIZ）／ホップ（ICE）
+      const tNow = performance.now()/1000;
+      const hoverY = this.hover ? Math.sin(tNow + this.x*0.01)*6 : 0;
+      const hopY   = (this.hop && this.state==="walk")
+                    ? -Math.abs(Math.sin(tNow*3 + this.x*0.02))*HOP_AMP : 0;
 
       if(this.state==="walk"){
         img = A.walk[Math.floor(this.animT*WALK_FPS)%Math.max(1,A.walk.length)] || A.idle;
 
       }else if(this.state==="atk"){
-        // 共通：最初は立ち絵→その後攻撃フレーム
-        const phase = this.animT % ATK_TOTAL;
-        if(phase < ATK_IDLE_PHASE){
-          img = A.idle;
+        if(this.kind==="ICE"){
+          // ★ アイス専用：I4で溜め → I5で発射後ポーズ
+          const charging = this.animT < ICE_CHARGE_TIME;
+          img = charging ? (A.charge || A.idle) : (A.atk[0] || A.idle);
         }else{
-          const len = Math.max(1, A.atk.length);
-          const idx = Math.floor((phase-ATK_IDLE_PHASE) / (ATK_TOTAL-ATK_IDLE_PHASE) * len) % len;
-          img = A.atk[idx] || A.idle;
+          // 共通：立ち→攻撃
+          const phase = this.animT % ATK_TOTAL;
+          if(phase < ATK_IDLE_PHASE){
+            img = A.idle;
+          }else{
+            const len = Math.max(1, A.atk.length);
+            const idx = Math.floor((phase-ATK_IDLE_PHASE) / (ATK_TOTAL-ATK_IDLE_PHASE) * len) % len;
+            img = A.atk[idx] || A.idle;
+          }
         }
-
       }else{
         img = A.idle;
       }
@@ -444,13 +488,28 @@
       const w=this.width(), h=this.height();
       const flip = this.side<0;
       ctx.save();
-      ctx.translate(this.x, this.y + hoverY);
+      ctx.translate(this.x, this.y + hoverY + hopY);
       if(flip) ctx.scale(-1,1);
+
+      // 本体
       drawImageCentered(ctx, img, 0, -h*0.6, w, h);
+
+      // アイスの「溜めエフェクト」：I8.pngを極小→大に拡大
+      if(this.kind==="ICE" && this.state==="atk" && this.animT < ICE_CHARGE_TIME){
+        const p = Math.min(1, this.animT/ICE_CHARGE_TIME);
+        const s = ICE_CHARGE_MIN_S*(1-p) + ICE_CHARGE_MAX_S*p; // 0.18→1.0
+        const orb = assets.PROJ.ice;
+        ctx.save();
+        // 手元付近（右利き想定：前方やや上）※flip対応
+        const offX = 14, offY = -h*0.68;
+        drawImageCentered(ctx, orb, (flip?-offX:offX), offY, 24*s, 24*s);
+        ctx.restore();
+      }
+
       ctx.restore();
 
       // HPバー
-      const hpw = 46, hph=5, x = this.x - hpw/2, y = (this.y + hoverY) - h*0.9;
+      const hpw = 46, hph=5, x = this.x - hpw/2, y = (this.y + hoverY + hopY) - h*0.9;
       const rate = Math.max(0,this.hp)/this.maxHp;
       ctx.fillStyle="#000000aa"; ctx.fillRect(x,y,hpw,hph);
       ctx.fillStyle = mixHex("#ef5350","#4caf50", rate);
@@ -580,6 +639,7 @@
   document.getElementById("btnEvil").addEventListener("click", ()=>spawnAlly("TEKI"));
   document.getElementById("btnWiz").addEventListener("click", ()=>spawnAlly("WIZ"));
   document.getElementById("btnGolem").addEventListener("click", ()=>spawnAlly("GOLEM"));
+  document.getElementById("btnIce").addEventListener("click", ()=>spawnAlly("ICE"));
   document.getElementById("pausePill").addEventListener("click", ()=>{
     paused = !paused;
     document.getElementById("pausePill").textContent = paused ? "▶ Resume" : "⏸ Pause";

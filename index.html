@@ -3,49 +3,41 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
-<title>MOBタワーディフェンス – プロトタイプ</title>
+<title>MOBタワーディフェンス – デバッグ版</title>
 <style>
-  :root{
-    --w: 960px;
-    --h: 540px;
-    --hud: #0e1016cc;
-  }
+  :root{ --w: 960px; --h: 540px; --hud:#0e1016cc; }
   html,body{margin:0;background:#000;color:#fff;height:100%;overscroll-behavior:none}
   #wrap{display:grid;place-items:center;height:100%}
   #game{width:var(--w);height:var(--h);background:#111;image-rendering:pixelated;touch-action:none}
-  #ui{
-    position:fixed;left:50%;bottom:10px;transform:translateX(-50%);
-    display:flex;gap:8px;flex-wrap:wrap;justify-content:center
-  }
   .bar{
     position:fixed;top:10px;left:50%;transform:translateX(-50%);
     background:var(--hud);backdrop-filter:blur(6px);
     padding:6px 10px;border-radius:10px;font:14px/1.2 system-ui, sans-serif
   }
+  #ui{position:fixed;left:50%;bottom:10px;transform:translateX(-50%);display:flex;gap:8px;flex-wrap:wrap}
   button{
     background:#1b2333;color:#fff;border:1px solid #2c3752;border-radius:10px;
     padding:8px 12px;font-size:14px;cursor:pointer
   }
-  button:hover{filter:brightness(1.1)}
   #camBtn{position:fixed;right:10px;bottom:10px;display:flex;gap:6px}
+  #dbg{
+    position:fixed;left:10px;top:10px;white-space:pre-line;font:12px/1.3 ui-monospace,monospace;
+    background:#000a;color:#ff8a8a;padding:8px 10px;border-radius:8px;max-width:40vw
+  }
 </style>
 </head>
 <body>
-<div id="wrap">
-  <canvas id="game" width="960" height="540"></canvas>
-</div>
-
+<div id="wrap"><canvas id="game" width="960" height="540"></canvas></div>
 <div class="bar" id="status">読み込み中…</div>
-
 <div id="ui">
   <button id="spawnDan">MOB段ボール (50)</button>
   <button id="spawnF">MOBファイター (120)</button>
+  <button id="test">テスト出撃（段×2,敵×1）</button>
 </div>
-
 <div id="camBtn">
-  <button id="camL">◀︎</button>
-  <button id="camR">▶︎</button>
+  <button id="camL">◀︎</button><button id="camR">▶︎</button>
 </div>
+<div id="dbg" style="display:none"></div>
 
 <script>
 (() => {
@@ -53,28 +45,27 @@
   const ctx = cvs.getContext('2d');
   const W = cvs.width, H = cvs.height;
 
-  // ==== アセット ====
+  // ==== 画像ロード（エラー耐性つき） ====
   const IMG = {};
-  const load = (k, src) => new Promise(res => {
-    const im = new Image(); im.src = src; im.onload = () => res(IMG[k]=im);
-  });
-
-  const assets = [
+  const loadErrors = {};
+  const toLoad = [
     ['bg','sora.png'],
     ['ground','doro.png'],
     ['t1','T1.png'], ['t2','T2.png'],
-    // 段ボール
     ['dan_stand','C1.png'], ['dan_w1','C2.png'], ['dan_w2','C3.png'], ['dan_a','C4.png'],
-    // ファイター
     ['f_stand','EN1-1.png'], ['f_w1','EN1-2.png'], ['f_w2','EN1-3.png'], ['f_a1','EN1-4.png'], ['f_a2','EN1-5.png'],
   ];
+  function load(k, src){
+    return new Promise(res=>{
+      const im = new Image();
+      im.onload = ()=>res(IMG[k]=im);
+      im.onerror = ()=>{ loadErrors[src] = 'not found (404?)'; res(IMG[k]=null); };
+      im.src = src;
+    });
+  }
 
   // ==== 世界/カメラ ====
-  const world = {
-    width: 3200,
-    groundY: 440, // 地面ライン（キャラ底がここ）
-    cameraX: 0
-  };
+  const world = { width: 3200, groundY: 460, cameraX: 0 };
 
   // ==== タワー ====
   const towers = {
@@ -82,267 +73,213 @@
     enemy:{ x: 3200-220, w: 120, h: 160, hp: 2000, img: 't2' }
   };
 
+  // 初期カメラ：味方タワーを確実に映す
+  world.cameraX = 0;
+
   // ==== 経済 ====
-  let coins = 300;
-  let lastIncome = 0;
+  let coins = 300, lastIncome = 0;
 
   // ==== 入力（カメラパン）====
   const keys = new Set();
-  window.addEventListener('keydown', e => keys.add(e.key));
-  window.addEventListener('keyup',   e => keys.delete(e.key));
+  addEventListener('keydown', e=>keys.add(e.key));
+  addEventListener('keyup', e=>keys.delete(e.key));
+  let dragging=false, dragStartX=0, camStart=0;
+  cvs.addEventListener('pointerdown', e=>{dragging=true;dragStartX=e.clientX;camStart=world.cameraX;cvs.setPointerCapture(e.pointerId);});
+  cvs.addEventListener('pointermove', e=>{ if(!dragging) return; const dx=e.clientX-dragStartX; world.cameraX = clamp(camStart - dx, 0, world.width - W); });
+  cvs.addEventListener('pointerup', ()=>dragging=false);
+  document.getElementById('camL').onclick=()=>world.cameraX = clamp(world.cameraX-200,0,world.width-W);
+  document.getElementById('camR').onclick=()=>world.cameraX = clamp(world.cameraX+200,0,world.width-W);
 
-  let dragging = false, dragStartX = 0, camStart = 0;
-  cvs.addEventListener('pointerdown', e => {
-    dragging = true; dragStartX = e.clientX; camStart = world.cameraX;
-    cvs.setPointerCapture(e.pointerId);
-  });
-  cvs.addEventListener('pointermove', e => {
-    if(!dragging) return;
-    const dx = e.clientX - dragStartX;
-    world.cameraX = clamp(camStart - dx, 0, world.width - W);
-  });
-  cvs.addEventListener('pointerup', e => dragging = false);
-
-  document.getElementById('camL').onclick = () => world.cameraX = clamp(world.cameraX - 200, 0, world.width - W);
-  document.getElementById('camR').onclick = () => world.cameraX = clamp(world.cameraX + 200, 0, world.width - W);
-
-  // ==== ユニット定義（px/s, msなど実値）====
+  // ==== ユニット定義 ====
   const Units = {
-    dan: {
-      name:'MOB段ボール',
-      maxHp:150, atk:20, atkInterval:1000, range:42, speed:40, cost:50,
-      walk:['dan_w1','dan_w2'], attack:['dan_a'], stand:'dan_stand',
-      drawW: 56, drawH: 56
-    },
-    fighter: {
-      name:'MOBファイター',
-      maxHp:120, atk:30, atkInterval:700, range:46, speed:60, cost:120,
-      walk:['f_w1','f_w2'], attack:['f_a1','f_a2'], stand:'f_stand',
-      drawW: 60, drawH: 64
-    },
-    // 敵は段ボール相当＋更に遅く
-    enemyGrunt: {
-      name:'Enemy',
-      maxHp:120, atk:18, atkInterval:1100, range:40, speed:20, cost:0,
-      // 既存アセットを流用（見た目テスト用）
-      walk:['f_w1','f_w2'], attack:['f_a1','f_a2'], stand:'f_stand',
-      drawW: 56, drawH: 60
-    }
+    dan: { name:'MOB段ボール', maxHp:150, atk:20, atkInterval:1000, range:42, speed:40, cost:50,
+           walk:['dan_w1','dan_w2'], attack:['dan_a'], stand:'dan_stand', drawW:56, drawH:56 },
+    fighter: { name:'MOBファイター', maxHp:120, atk:30, atkInterval:700, range:46, speed:60, cost:120,
+           walk:['f_w1','f_w2'], attack:['f_a1','f_a2'], stand:'f_stand', drawW:60, drawH:64 },
+    enemyGrunt: { name:'Enemy', maxHp:120, atk:18, atkInterval:1100, range:40, speed:20, cost:0,
+           walk:['f_w1','f_w2'], attack:['f_a1','f_a2'], stand:'f_stand', drawW:56, drawH:60 }
   };
 
-  // ==== 状態 ====
-  /** @type {Array<Unit>} */
-  const allies = [];
-  /** @type {Array<Unit>} */
-  const enemies = [];
-
+  const allies = [], enemies = [];
   function makeUnit(side, def, x){
-    return {
-      side, def,
-      x, y: world.groundY,
-      hp: def.maxHp,
-      tAtk: 0,
-      animT: 0,
-      state: 'walk', // walk|attack|stand|dead
-      target: null
-    };
+    return { side, def, x, y: world.groundY, hp: def.maxHp, tAtk: 0, animT: 0, state:'walk', target:null };
   }
-
-  // ==== 出撃 ====
   function spawn(type){
-    const def = Units[type];
-    if(!def) return;
-    if(def.cost && coins < def.cost) return;
-    coins -= def.cost || 0;
-    const x = towers.ally.x + towers.ally.w + 10;
-    allies.push(makeUnit('ally', def, x));
+    const d = Units[type]; if(!d) return;
+    if(d.cost && coins < d.cost) return;
+    coins -= d.cost||0;
+    const x = (type==='enemyGrunt') ? (towers.enemy.x - 20) : (towers.ally.x + towers.ally.w + 10);
+    (type==='enemyGrunt'?enemies:allies).push(makeUnit(type==='enemyGrunt'?'enemy':'ally', d, x));
   }
-
-  // ボタン
+  // UI
   document.getElementById('spawnDan').onclick = ()=>spawn('dan');
   document.getElementById('spawnF').onclick   = ()=>spawn('fighter');
+  document.getElementById('test').onclick = ()=>{
+    spawn('dan'); spawn('dan'); spawn('enemyGrunt');
+  };
 
-  // ==== 敵の超ゆっくり召喚 ====
-  let lastEnemySpawn = 0;
-  const ENEMY_SPAWN_MS = 8000; // 8秒ごと
-  function maybeSpawnEnemy(now){
-    if(now - lastEnemySpawn < ENEMY_SPAWN_MS) return;
-    lastEnemySpawn = now;
-    const x = towers.enemy.x - 20;
-    enemies.push(makeUnit('enemy', Units.enemyGrunt, x));
-  }
+  // 敵超ゆっくりスポーン
+  let lastEnemySpawn = 0; const ENEMY_SPAWN_MS = 8000;
 
-  // ==== ロジック ====
-  function clamp(v, a, b){ return Math.max(a, Math.min(b, v)); }
+  function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
+  function px(v,dt){return v*dt;}
 
   function update(now, dt){
-    // カメラキー
     if(keys.has('ArrowLeft') || keys.has('a')) world.cameraX = clamp(world.cameraX - 400*dt, 0, world.width - W);
     if(keys.has('ArrowRight')|| keys.has('d')) world.cameraX = clamp(world.cameraX + 400*dt, 0, world.width - W);
 
-    // ベーシック収入
     if(now - lastIncome > 1200){ coins += 10; lastIncome = now; }
 
-    // 敵スポーン
-    maybeSpawnEnemy(now);
+    if(now - lastEnemySpawn > ENEMY_SPAWN_MS){ lastEnemySpawn = now; spawn('enemyGrunt'); }
 
-    // ユニット更新
     stepUnits(allies, enemies, towers.enemy, +1, now, dt);
     stepUnits(enemies, allies, towers.ally, -1, now, dt);
-
-    // 勝敗チェック（簡易）
-    if(towers.enemy.hp <= 0) towers.enemy.hp = 0;
-    if(towers.ally.hp  <= 0) towers.ally.hp  = 0;
   }
 
   function stepUnits(my, other, enemyTower, dir, now, dt){
-    const px = (v)=> v * dt; // v: px/s
-
     for(const u of my){
-      if(u.hp <= 0){ u.state='dead'; continue; }
-
-      // 接地（描画時は drawH を使って底辺を groundY に合わせる）
+      if(u.hp<=0){ u.state='dead'; continue; }
       u.y = world.groundY;
 
-      // 目標探索：目の前の敵ユニット
-      let target = null;
-      // 近い順（行軍方向で前にいるもの）
+      // 目の前の敵ユニット
+      let target=null;
       for(const e of other){
-        if(e.hp <= 0) continue;
-        if(dir>0 && e.x >= u.x || dir<0 && e.x <= u.x){
+        if(e.hp<=0) continue;
+        if((dir>0 && e.x>=u.x) || (dir<0 && e.x<=u.x)){
           const dist = Math.abs(e.x - u.x);
           if(dist <= u.def.range){ target = e; break; }
-          // 目の前にいるけど遠い → nullのまま
         }
       }
 
-      // タワーが射程内？
-      const towerDist = Math.abs((enemyTower.x) - u.x);
+      const towerDist = Math.abs(enemyTower.x - u.x);
       const towerInFront = dir>0 ? (enemyTower.x >= u.x) : (enemyTower.x <= u.x);
       const canHitTower = towerInFront && towerDist <= u.def.range;
 
-      // 攻撃判定
-      const canAttack = target || canHitTower;
-      if(canAttack){
-        u.state = 'attack';
-        if(now - u.tAtk >= u.def.atkInterval){
-          u.tAtk = now;
-          if(target){ target.hp -= u.def.atk; if(target.hp<=0) {target.hp=0; coins += (u.side==='ally'?20:0);} }
-          else { enemyTower.hp -= u.def.atk; }
+      if(target || canHitTower){
+        u.state='attack';
+        if(perfMs() - u.tAtk >= u.def.atkInterval){
+          u.tAtk = perfMs();
+          if(target){ target.hp -= u.def.atk; if(target.hp<=0){ target.hp=0; if(u.side==='ally') coins+=20; } }
+          else{ enemyTower.hp -= u.def.atk; }
         }
       }else{
-        // 前進
-        u.state = 'walk';
-        u.x += px(u.def.speed) * dir;
-        // 前の味方と重なりすぎ防止（簡易）
-        const ahead = my.find(v => v!==u && ((dir>0 && v.x > u.x) || (dir<0 && v.x < u.x)) && Math.abs(v.y-u.y)<1);
-        if(ahead){
-          const gap = Math.abs(ahead.x - u.x);
-          if(gap < u.def.range*0.8){
-            // 近すぎ → 少し押し戻す
-            u.x -= px(u.def.speed*0.6) * dir;
-          }
-        }
+        u.state='walk';
+        u.x += px(u.def.speed, dt) * dir;
       }
 
-      // 画面外は許容（ワールド内に拘束）
       u.x = clamp(u.x, 0, world.width-1);
       u.animT += dt;
     }
-
-    // 死亡ユニット除去
     for(let i=my.length-1;i>=0;i--) if(my[i].state==='dead') my.splice(i,1);
   }
 
-  // ==== 描画 ====
-  function draw(){
-    // 背景
-    // 画面に合わせて bg を引き伸ばし（雰囲気用）
-    ctx.drawImage(IMG.bg, 0, 0, W, H);
+  // ==== 描画（画像未読込でも落ちない） ====
+  function safeDrawImage(img, sx, sy, sw, sh){
+    if(!img) return false;
+    try{ ctx.drawImage(img, sx, sy, sw, sh); return true; }catch{ return false; }
+  }
 
-    // 地面（タイル敷き）
-    const gy = world.groundY;
-    const gh = Math.max(IMG.ground.height, 120);
-    const tileW = IMG.ground.width || 256;
-    const start = Math.floor(world.cameraX / tileW) * tileW;
-    for(let x = start - tileW*2; x < world.cameraX + W + tileW*2; x += tileW){
-      ctx.drawImage(IMG.ground, x - world.cameraX, gy, tileW, gh);
+  function draw(){
+    // 背景：なければグラデ
+    if(!safeDrawImage(IMG.bg, 0, 0, W, H)){
+      const g = ctx.createLinearGradient(0,0,0,H);
+      g.addColorStop(0,'#0a0f1a'); g.addColorStop(1,'#1c2a44');
+      ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+    }
+
+    // 地面タイル
+    if(IMG.ground){
+      const gy = world.groundY, gh = 120, tileW = IMG.ground.width||256;
+      const start = Math.floor(world.cameraX / tileW) * tileW;
+      for(let x = start - tileW*2; x < world.cameraX + W + tileW*2; x += tileW){
+        safeDrawImage(IMG.ground, x - world.cameraX, gy, tileW, gh);
+      }
+    }else{
+      // 地面ガイド
+      ctx.fillStyle='#2a2a2a'; ctx.fillRect(0, world.groundY, W, H-world.groundY);
     }
 
     // タワー
     drawTower(towers.ally);
     drawTower(towers.enemy);
 
-    // ユニット（x昇順で奥→手前が自然）
-    const renderList = [...allies, ...enemies].sort((a,b)=>a.x-b.x);
-    for(const u of renderList) drawUnit(u);
+    // ユニット
+    [...allies, ...enemies].sort((a,b)=>a.x-b.x).forEach(drawUnit);
 
     // HUD
-    const st = document.getElementById('status');
-    st.textContent = `コイン: ${coins} ｜ 味方タワーHP: ${towers.ally.hp} ｜ 敵タワーHP: ${towers.enemy.hp}`;
+    document.getElementById('status').textContent =
+      `コイン: ${coins} ｜ 味方タワーHP: ${towers.ally.hp} ｜ 敵タワーHP: ${towers.enemy.hp} ｜ カメラ: ${Math.round(world.cameraX)}`;
+
+    // ロードエラー表示
+    const missing = Object.entries(loadErrors).map(([k,v])=>`${k} → ${v}`);
+    const dbg = document.getElementById('dbg');
+    if(missing.length){
+      dbg.style.display='block';
+      dbg.textContent = `⚠ 画像が見つかりません。ファイル名/大文字小文字/配置を確認してください。\n`+
+                        missing.join('\n');
+    }else{
+      dbg.style.display='none';
+    }
   }
 
   function drawTower(tw){
-    const {x,w,h,img} = tw;
-    const sx = x - world.cameraX, sy = world.groundY - h;
-    ctx.drawImage(IMG[img], sx, sy, w, h);
+    const sx = tw.x - world.cameraX, sy = world.groundY - tw.h;
+    if(!safeDrawImage(IMG[tw.img], sx, sy, tw.w, tw.h)){
+      // 代替矩形
+      ctx.fillStyle = tw===towers.ally ? '#4aa3ff' : '#ff6b6b';
+      ctx.fillRect(sx, sy, tw.w, tw.h);
+    }
     // HPバー
-    const bw = 100, bh = 8;
-    ctx.fillStyle = '#0008'; ctx.fillRect(sx+(w-bw)/2, sy-14, bw, bh);
-    const p = Math.max(0, tw.hp)/2000;
-    ctx.fillStyle = '#3bd06d'; ctx.fillRect(sx+(w-bw)/2, sy-14, bw*p, bh);
+    const bw=100,bh=8;
+    ctx.fillStyle='#0008'; ctx.fillRect(sx+(tw.w-bw)/2, sy-14, bw, bh);
+    const p = Math.max(0, tw.hp)/2000; ctx.fillStyle='#3bd06d'; ctx.fillRect(sx+(tw.w-bw)/2, sy-14, bw*p, bh);
   }
 
   function drawUnit(u){
-    const def = u.def;
+    const def=u.def;
     const sx = u.x - world.cameraX - def.drawW/2;
     const sy = u.y - def.drawH;
+    let key = def.stand;
+    if(u.state==='walk'){ key = def.walk[Math.floor(u.animT*6)%def.walk.length]; }
+    else if(u.state==='attack'){ key = def.attack[Math.floor(u.animT*8)%def.attack.length]; }
+    const img = IMG[key];
 
-    // アニメ選択
-    let imKey = def.stand;
-    if(u.state==='walk'){
-      const idx = Math.floor(u.animT*6)%def.walk.length; // ゆっくり
-      imKey = def.walk[idx];
-    }else if(u.state==='attack'){
-      const idx = Math.floor(u.animT*8)%def.attack.length;
-      imKey = def.attack[idx];
-    }
-    const img = IMG[imKey];
-
-    // 向き：味方は右、敵は左
     const flip = (u.side==='enemy');
     if(flip){
-      ctx.save();
-      ctx.translate(sx + def.drawW/2, 0);
-      ctx.scale(-1, 1);
-      ctx.drawImage(img, -def.drawW/2, sy, def.drawW, def.drawH);
+      ctx.save(); ctx.translate(sx + def.drawW/2, 0); ctx.scale(-1,1);
+      if(!safeDrawImage(img, -def.drawW/2, sy, def.drawW, def.drawH)){
+        ctx.fillStyle='#fcb'; ctx.fillRect(-def.drawW/2, sy, def.drawW, def.drawH);
+      }
       ctx.restore();
     }else{
-      ctx.drawImage(img, sx, sy, def.drawW, def.drawH);
+      if(!safeDrawImage(img, sx, sy, def.drawW, def.drawH)){
+        ctx.fillStyle='#bcf'; ctx.fillRect(sx, sy, def.drawW, def.drawH);
+      }
     }
 
     // HPバー
     const bw = Math.max(30, def.drawW*0.8), bh = 6;
     const hx = (u.x - world.cameraX) - bw/2;
     ctx.fillStyle = '#000a'; ctx.fillRect(hx, sy-10, bw, bh);
-    ctx.fillStyle = '#55d37b';
-    ctx.fillRect(hx, sy-10, bw*(u.hp/def.maxHp), bh);
+    ctx.fillStyle = '#55d37b'; ctx.fillRect(hx, sy-10, bw*(u.hp/def.maxHp), bh);
   }
 
   // ==== ループ ====
   let last = performance.now();
-  Promise.all(assets.map(a=>load(a[0],a[1]))).then(()=>{
-    last = performance.now();
-    requestAnimationFrame(tick);
-  });
-
+  function perfMs(){ return performance.now(); } // 使用のため関数化
   function tick(now){
-    const dtMs = now - last; last = now;
-    const dt = dtMs/1000; // 秒
-    update(now, dt);
-    draw();
+    const dt = (now - last)/1000; last = now;
+    update(now, dt); draw();
     requestAnimationFrame(tick);
   }
+
+  // 起動
+  Promise.all(toLoad.map(([k,src])=>load(k,src))).then(()=>{
+    last = performance.now();
+    // 起動時に味方タワーが見える位置へ（安全）
+    world.cameraX = 0;
+    requestAnimationFrame(tick);
+  });
 })();
 </script>
 </body>

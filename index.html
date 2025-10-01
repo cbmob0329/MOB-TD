@@ -3,19 +3,19 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
-<title>MOB TD – ウィザード追加版（遠距離＋回転弾）</title>
+<title>MOB TD – 射程/ペース調整＋短距離弾（ワルMOB）</title>
 <meta name="theme-color" content="#0b0c10" />
 <style>
   :root{
     --app-w: 420px;
-    --row-hud: 56px;
-    --row-controls: 260px; /* 2x2カードで少し高め */
+    --row-hud: 52px;
+    --row-controls: 168px; /* ← 圧縮して画面内に収める */
     --hud-bg: #0e1118f0;
     --hud-fg: #eaf3ff;
     --hud-accent: #4dd0ff;
     --panel-bg: #0b1424f2;
     --panel-stroke: #1b2a44;
-    --panel-shadow: 0 10px 28px rgba(0,0,0,.4);
+    --panel-shadow: 0 8px 22px rgba(0,0,0,.38);
   }
   html,body{height:100%;margin:0;background:#000;color:#fff;font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Hiragino Kaku Gothic ProN",Meiryo,sans-serif;overscroll-behavior:none}
   *{box-sizing:border-box}
@@ -32,15 +32,15 @@
 
   /* ===== HUD ===== */
   header.hud{
-    display:flex; align-items:center; gap:8px;
-    padding:8px 10px calc(8px + env(safe-area-inset-top)) 10px;
+    display:flex; align-items:center; gap:6px;
+    padding:6px 8px calc(6px + env(safe-area-inset-top)) 8px;
     background:linear-gradient(to bottom,#020409,#0b1220);
     border-bottom:1px solid #0f1b2e;
   }
   .pill{
     background:var(--hud-bg); color:var(--hud-fg);
-    border:1px solid #1b2638; border-radius:999px; padding:6px 10px; font-size:14px;
-    display:flex; align-items:center; gap:8px;
+    border:1px solid #1b2638; border-radius:999px; padding:4px 8px; font-size:13px;
+    display:flex; align-items:center; gap:6px;
     box-shadow:0 2px 8px rgba(0,0,0,.25);
   }
   .pill b{color:var(--hud-accent)}
@@ -53,38 +53,39 @@
   #view{position:absolute; inset:0; width:100%; height:100%; image-rendering:pixelated; display:block;}
   .center-msg{
     position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
-    padding:8px 12px; border-radius:10px; background:#00000099; border:1px solid #24324f;
+    padding:6px 10px; border-radius:10px; background:#00000099; border:1px solid #24324f;
     font-size:12px; text-align:center; pointer-events:none;
   }
 
-  /* ===== 操作パネル ===== */
+  /* ===== 操作パネル（圧縮） ===== */
   footer.controls{
-    padding:10px 10px calc(12px + env(safe-area-inset-bottom)) 10px;
+    padding:8px 8px calc(10px + env(safe-area-inset-bottom)) 8px;
     background:linear-gradient(to top,#091323,#0b1424cc);
     border-top:1px solid #0f1b2e;
+    overflow:auto; /* 端末が極端に低い場合もスクロールで使える */
   }
   .grid2x2{
     height:100%;
     display:grid;
     grid-template-columns: 1fr 1fr;
     grid-auto-rows: 1fr;
-    gap:10px;
+    gap:8px;
   }
   .card{
     background:var(--panel-bg); color:#e7f1ff;
-    border:1px solid var(--panel-stroke); border-radius:14px; padding:10px;
-    display:grid; align-content:start; gap:8px; text-align:center;
+    border:1px solid var(--panel-stroke); border-radius:12px; padding:8px;
+    display:grid; align-content:start; gap:6px; text-align:center;
     box-shadow:var(--panel-shadow);
   }
-  .card h3{margin:0; font-size:14px; letter-spacing:.3px}
-  .cost{font-size:12px; opacity:.9}
+  .card h3{margin:0; font-size:13px; letter-spacing:.2px}
+  .cost{font-size:11px; opacity:.9}
   .btn{
     appearance:none; border:1px solid #2a3751; background:#122034; color:#e9f3ff; border-radius:10px;
-    padding:10px 12px; font-weight:700; font-size:14px; cursor:pointer;
+    padding:8px 10px; font-weight:700; font-size:13px; cursor:pointer;
     box-shadow:inset 0 0 0 1px #19314e, 0 2px 10px rgba(0,0,0,.25);
   }
   .btn:disabled{opacity:.5; filter:grayscale(.3); cursor:not-allowed}
-  .hint{font-size:11px; opacity:.8}
+  .hint{font-size:10px; opacity:.8}
 </style>
 </head>
 <body>
@@ -105,7 +106,7 @@
       <div class="center-msg" id="msg">下のボタンでユニットを出撃できます</div>
     </main>
 
-    <!-- ===== 操作パネル（2x2） ===== -->
+    <!-- ===== 操作パネル（2x2のままコンパクト化） ===== -->
     <footer class="controls">
       <div class="grid2x2">
         <div class="card">
@@ -122,13 +123,13 @@
         </div>
         <div class="card">
           <h3>ワルMOB</h3>
-          <div class="cost">コスト <b>30</b> / HP100 / 近接（中速）</div>
+          <div class="cost">コスト <b>30</b> / HP100 / 近接＋短距離弾</div>
           <button class="btn" id="btnEvil">出撃</button>
-          <div class="hint">teki1〜3.png</div>
+          <div class="hint">teki1〜3.png, teki7.png</div>
         </div>
         <div class="card">
           <h3>MOB ウィザード</h3>
-          <div class="cost">コスト <b>200</b> / HP200 / 遠距離300px</div>
+          <div class="cost">コスト <b>200</b> / HP200 / 遠距離200px</div>
           <button class="btn" id="btnWiz">出撃</button>
           <div class="hint">MOBM, MOBM2, MOBM3, mahou1.png</div>
         </div>
@@ -146,16 +147,14 @@
     towerL: "T1.png",
     towerR: "T2.png",
 
-    // 既存
     BOX:  { idle:"C1.png",    walk:["C2.png","C3.png"],      atk:"C4.png" },
     FTR:  { idle:"EN1-1.png", walk:["EN1-2.png","EN1-3.png"], atk:["EN1-4.png","EN1-5.png"] },
-    TEKI: { idle:"teki1.png", walk:["teki1.png","teki2.png"], atk:"teki3.png" },
-
+    // ワルMOB：近接＋短距離弾（teki7）
+    TEKI: { idle:"teki1.png", walk:["teki1.png","teki2.png"], atk:"teki3.png", proj:"teki7.png" },
     // ウィザード
     WIZ:  { idle:"MOBM.png",  walk:["MOBM2.png"],             atk:"MOBM3.png" },
 
-    // 弾
-    PROJ: { magic:"mahou1.png" }
+    PROJ: { magic:"mahou1.png", short:"teki7.png" }
   };
 
   // ====== DOM ======
@@ -195,15 +194,22 @@
   const MELEE_RANGE = 26;
   const ATK_IDLE_PHASE = 0.18;      // 2段攻撃：立ち絵時間
   const ATK_TOTAL      = 0.36;      // 2段攻撃：総時間（描画用）
-  const PROJ_SPEED = 260;           // 魔法弾の速度(px/s)
-  const PROJ_HIT_R = 16;            // 当たり判定半径
+
+  // Projectile params
+  const PROJ_SPEED_WIZ = 230;       // ウィザード弾
+  const PROJ_SPEED_SHORT = 200;     // ワルMOBの短距離弾
+  const PROJ_HIT_R = 16;
 
   // ====== ユニット定義 ======
   const UNIT_KINDS = {
     BOX:  { name:"MOB段ボール", hp:150, atk:20, atkInt:1.0, speed:3, cost:50,  key:"BOX",  rangePx:MELEE_RANGE, scale:0.6, hover:false, proj:null },
     FTR:  { name:"MOBファイター", hp:120, atk:30, atkInt:0.7, speed:5, cost:120, key:"FTR",  rangePx:MELEE_RANGE, scale:0.6, hover:false, proj:null },
-    TEKI: { name:"ワルMOB",      hp:100, atk:15, atkInt:1.0, speed:3, cost:30,  key:"TEKI", rangePx:MELEE_RANGE, scale:0.6, hover:false, proj:null },
-    WIZ:  { name:"MOB ウィザード", hp:200, atk:80, atkInt:1.8, speed:2, cost:200, key:"WIZ", rangePx:300,        scale:0.66, hover:true,  proj:{imgKey:"magic"} }
+    // ワルMOB：近距離レンジ＋短距離弾を撃つ
+    TEKI: { name:"ワルMOB", hp:100, atk:15, atkInt:1.0, speed:3, cost:30, key:"TEKI", rangePx:80, scale:0.6, hover:false,
+            proj:{ imgKey:"short", maxTravel:120, speed:PROJ_SPEED_SHORT, wobble:true } },
+    // ウィザード：射程/ペースを弱体（ご要望）
+    WIZ:  { name:"MOB ウィザード", hp:200, atk:80, atkInt:2.6, speed:2, cost:200, key:"WIZ", rangePx:200, scale:0.66, hover:true,
+            proj:{ imgKey:"magic", speed:PROJ_SPEED_WIZ, wobble:false } }
   };
 
   // ====== 画像読み込み ======
@@ -227,6 +233,7 @@
     // projectile
     assets.PROJ = {};
     assets.PROJ.magic = await loadImage(IMAGES.PROJ.magic);
+    assets.PROJ.short = await loadImage(IMAGES.PROJ.short);
   }
 
   // ====== 状態 ======
@@ -241,7 +248,7 @@
   const projectiles = []; // 魔法弾など
   const hits = [];
 
-  // 敵は段ボールが1体ずつ出てくる
+  // 敵は段ボールが1体ずつ
   let enemyQueue = [{kind:"BOX"},{kind:"BOX"},{kind:"BOX"},{kind:"BOX"},{kind:"BOX"}];
   let enemyActive = false;
 
@@ -262,17 +269,22 @@
   }
   function flash(target){ hits.push({x:target.x, y:target.y-28, t:0}); }
 
-  // ====== 射出物 ======
+  // ====== Projectile ======
   class Projectile{
-    constructor({x,y,side,atk,imgKey}){
+    constructor({x,y,side,atk,imgKey,speed,maxTravel=null,wobble=false}){
       this.x=x; this.y=y; this.side=side; this.atk=atk; this.img=assets.PROJ[imgKey];
-      this.angle=0; // 回転
-      this.dead=false;
+      this.angle=0; this.dead=false;
+      this.speed=speed||220;
+      this.startX = x;
+      this.maxTravel = maxTravel; // null=無制限
+      this.wobble = wobble;       // 短距離弾はふわっと揺れる
     }
     step(dt){
-      this.x += (this.side>0?1:-1) * PROJ_SPEED * dt;
-      this.angle += 10*dt; // 回転速度
-      // 当たり判定（敵/味方の生きている最短対象に当たる）
+      this.x += (this.side>0?1:-1) * this.speed * dt;
+      // ビジュアル
+      this.angle += (this.speed>=PROJ_SPEED_WIZ ? 10 : 6) * dt; // 速い弾ほど回転速く
+      const wobY = this.wobble ? Math.sin(this.x*0.08)*4 : 0;
+      // 当たり判定（最短の生きた敵/味方）
       const foes = this.side>0 ? enemies : allies;
       for(const f of foes){
         if(f.state==="dead") continue;
@@ -281,26 +293,30 @@
           this.dead=true; return;
         }
       }
-      // タワー判定
+      // タワー
       const foeTower = this.side>0 ? towerR : towerL;
       if(Math.abs(foeTower.x - this.x) <= PROJ_HIT_R){
-        foeTower.hp -= this.atk;
-        this.dead=true; return;
+        foeTower.hp -= this.atk; this.dead=true; return;
       }
-      // 画面外で消滅
+      // 画面外
       if(this.x < -40 || this.x > W+40) this.dead=true;
+      // 短距離弾の寿命
+      if(this.maxTravel!=null && Math.abs(this.x - this.startX) >= this.maxTravel) this.dead=true;
+
+      // yの揺れは描画時に反映したいので保持
+      this._wobY = wobY;
     }
     draw(ctx){
-      const sz = 28;
+      const sz = 26;
       ctx.save();
-      ctx.translate(this.x, this.y - 32); // 少し高めを飛ぶ
+      ctx.translate(this.x, (this.y - 28) + (this._wobY||0));
       ctx.rotate(this.angle);
       drawImageCentered(ctx, this.img, 0, 0, sz, sz);
       ctx.restore();
     }
   }
 
-  // ====== ユニット ======
+  // ====== Unit ======
   class Unit{
     constructor(kindKey, side){
       const def = UNIT_KINDS[kindKey];
@@ -314,7 +330,7 @@
       this.scale = def.scale;
       this.rangePx = def.rangePx;
       this.hover = !!def.hover;
-      this.proj = def.proj; // {imgKey}
+      this.proj = def.proj; // null または {imgKey, speed, maxTravel? , wobble?}
       this.state = "walk"; this.animT = 0;
     }
     width(){ return 64*this.scale; }
@@ -344,10 +360,14 @@
         if(this.cool===0){
           this.state="atk"; this.animT=0;
           if(this.proj){
-            // 遠距離：弾を発射し、ダメージはヒット時に与える
+            // 遠/短距離弾：発射（ヒット時ダメージ）
             projectiles.push(new Projectile({
               x:this.x + (this.side>0?+10:-10), y:this.y,
-              side:this.side, atk:this.atk, imgKey:this.proj.imgKey
+              side:this.side, atk:this.atk,
+              imgKey:this.proj.imgKey,
+              speed:this.proj.speed || 220,
+              maxTravel:this.proj.maxTravel ?? null,
+              wobble:!!this.proj.wobble
             }));
           }else{
             // 近接：即時ダメージ
@@ -378,7 +398,6 @@
       const hoverY = this.hover ? Math.sin(performance.now()/1000 + this.x*0.01)*6 : 0;
 
       if(this.state==="walk"){
-        // 歩行（ウィザードはMOBM2.pngの単枚だが、配列で処理）
         img = A.walk[Math.floor(this.animT*WALK_FPS)%Math.max(1,A.walk.length)] || A.idle;
 
       }else if(this.state==="atk"){

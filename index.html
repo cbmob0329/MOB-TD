@@ -3,13 +3,13 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
-<title>MOB TD – 射程/ペース調整＋短距離弾（ワルMOB）</title>
+<title>MOB TD – ゴレム追加（壁＋短距離投射）</title>
 <meta name="theme-color" content="#0b0c10" />
 <style>
   :root{
     --app-w: 420px;
     --row-hud: 52px;
-    --row-controls: 168px; /* ← 圧縮して画面内に収める */
+    --row-controls: 176px; /* 3列×2段が入る高さに微調整 */
     --hud-bg: #0e1118f0;
     --hud-fg: #eaf3ff;
     --hud-accent: #4dd0ff;
@@ -57,17 +57,17 @@
     font-size:12px; text-align:center; pointer-events:none;
   }
 
-  /* ===== 操作パネル（圧縮） ===== */
+  /* ===== 操作パネル（3列にして2段に収める／低背化） ===== */
   footer.controls{
     padding:8px 8px calc(10px + env(safe-area-inset-bottom)) 8px;
     background:linear-gradient(to top,#091323,#0b1424cc);
     border-top:1px solid #0f1b2e;
     overflow:auto; /* 端末が極端に低い場合もスクロールで使える */
   }
-  .grid2x2{
+  .grid3{
     height:100%;
     display:grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(3, 1fr);
     grid-auto-rows: 1fr;
     gap:8px;
   }
@@ -106,9 +106,9 @@
       <div class="center-msg" id="msg">下のボタンでユニットを出撃できます</div>
     </main>
 
-    <!-- ===== 操作パネル（2x2のままコンパクト化） ===== -->
+    <!-- ===== 操作パネル（3列） ===== -->
     <footer class="controls">
-      <div class="grid2x2">
+      <div class="grid3">
         <div class="card">
           <h3>MOB段ボール</h3>
           <div class="cost">コスト <b>50</b> / HP150 / 近接</div>
@@ -133,6 +133,12 @@
           <button class="btn" id="btnWiz">出撃</button>
           <div class="hint">MOBM, MOBM2, MOBM3, mahou1.png</div>
         </div>
+        <div class="card">
+          <h3>MOBゴレムロボ</h3>
+          <div class="cost">コスト <b>100</b> / HP600 / 壁＋短距離投射</div>
+          <button class="btn" id="btnGolem">出撃</button>
+          <div class="hint">R1〜R5.png</div>
+        </div>
       </div>
     </footer>
   </div>
@@ -147,14 +153,13 @@
     towerL: "T1.png",
     towerR: "T2.png",
 
-    BOX:  { idle:"C1.png",    walk:["C2.png","C3.png"],      atk:"C4.png" },
-    FTR:  { idle:"EN1-1.png", walk:["EN1-2.png","EN1-3.png"], atk:["EN1-4.png","EN1-5.png"] },
-    // ワルMOB：近接＋短距離弾（teki7）
-    TEKI: { idle:"teki1.png", walk:["teki1.png","teki2.png"], atk:"teki3.png", proj:"teki7.png" },
-    // ウィザード
-    WIZ:  { idle:"MOBM.png",  walk:["MOBM2.png"],             atk:"MOBM3.png" },
+    BOX:   { idle:"C1.png",    walk:["C2.png","C3.png"],      atk:"C4.png" },
+    FTR:   { idle:"EN1-1.png", walk:["EN1-2.png","EN1-3.png"], atk:["EN1-4.png","EN1-5.png"] },
+    TEKI:  { idle:"teki1.png", walk:["teki1.png","teki2.png"], atk:"teki3.png", proj:"teki7.png" },
+    WIZ:   { idle:"MOBM.png",  walk:["MOBM2.png"],             atk:"MOBM3.png" },
+    GOLEM: { idle:"R1.png",    walk:["R1.png","R2.png","R3.png"], atk:"R4.png", proj:"R5.png" },
 
-    PROJ: { magic:"mahou1.png", short:"teki7.png" }
+    PROJ: { magic:"mahou1.png", short:"teki7.png", golem:"R5.png" }
   };
 
   // ====== DOM ======
@@ -196,20 +201,25 @@
   const ATK_TOTAL      = 0.36;      // 2段攻撃：総時間（描画用）
 
   // Projectile params
-  const PROJ_SPEED_WIZ = 230;       // ウィザード弾
-  const PROJ_SPEED_SHORT = 200;     // ワルMOBの短距離弾
+  const PROJ_SPEED_WIZ   = 230;   // ウィザード弾
+  const PROJ_SPEED_SHORT = 200;   // ワルMOB短距離弾
+  const PROJ_SPEED_GOLEM = 180;   // ゴレムの近距離投射
   const PROJ_HIT_R = 16;
+
+  // ゴレムの壁判定距離と減速率
+  const GOLEM_BLOCK_DIST = 26;
+  const GOLEM_SLOW_RATE  = 0.25;  // 25%まで減速
 
   // ====== ユニット定義 ======
   const UNIT_KINDS = {
-    BOX:  { name:"MOB段ボール", hp:150, atk:20, atkInt:1.0, speed:3, cost:50,  key:"BOX",  rangePx:MELEE_RANGE, scale:0.6, hover:false, proj:null },
-    FTR:  { name:"MOBファイター", hp:120, atk:30, atkInt:0.7, speed:5, cost:120, key:"FTR",  rangePx:MELEE_RANGE, scale:0.6, hover:false, proj:null },
-    // ワルMOB：近距離レンジ＋短距離弾を撃つ
-    TEKI: { name:"ワルMOB", hp:100, atk:15, atkInt:1.0, speed:3, cost:30, key:"TEKI", rangePx:80, scale:0.6, hover:false,
-            proj:{ imgKey:"short", maxTravel:120, speed:PROJ_SPEED_SHORT, wobble:true } },
-    // ウィザード：射程/ペースを弱体（ご要望）
-    WIZ:  { name:"MOB ウィザード", hp:200, atk:80, atkInt:2.6, speed:2, cost:200, key:"WIZ", rangePx:200, scale:0.66, hover:true,
-            proj:{ imgKey:"magic", speed:PROJ_SPEED_WIZ, wobble:false } }
+    BOX:   { name:"MOB段ボール",  hp:150, atk:20, atkInt:1.0, speed:3, cost:50,  key:"BOX",   rangePx:MELEE_RANGE, scale:0.6,  hover:false, proj:null },
+    FTR:   { name:"MOBファイター", hp:120, atk:30, atkInt:0.7, speed:5, cost:120, key:"FTR",   rangePx:MELEE_RANGE, scale:0.6,  hover:false, proj:null },
+    TEKI:  { name:"ワルMOB",       hp:100, atk:15, atkInt:1.0, speed:3, cost:30,  key:"TEKI",  rangePx:80,           scale:0.6,  hover:false,
+             proj:{ imgKey:"short", speed:PROJ_SPEED_SHORT, maxTravel:120, wobble:true } },
+    WIZ:   { name:"MOB ウィザード", hp:200, atk:80, atkInt:2.6, speed:2, cost:200, key:"WIZ",  rangePx:200,          scale:0.66, hover:true,
+             proj:{ imgKey:"magic", speed:PROJ_SPEED_WIZ,   maxTravel:null, wobble:false } },
+    GOLEM: { name:"MOBゴレムロボ", hp:600, atk:10, atkInt:1.5, speed:1, cost:100, key:"GOLEM", rangePx:MELEE_RANGE,  scale:0.75, hover:false,
+             proj:{ imgKey:"golem", speed:PROJ_SPEED_GOLEM, maxTravel:90,  wobble:false } }
   };
 
   // ====== 画像読み込み ======
@@ -223,7 +233,7 @@
     assets.towerL = await loadImage(IMAGES.towerL);
     assets.towerR = await loadImage(IMAGES.towerR);
 
-    for(const key of ["BOX","FTR","TEKI","WIZ"]){
+    for(const key of ["BOX","FTR","TEKI","WIZ","GOLEM"]){
       const set = IMAGES[key];
       assets[key] = { idle:null, walk:[], atk:[] };
       assets[key].idle = await loadImage(set.idle);
@@ -234,6 +244,7 @@
     assets.PROJ = {};
     assets.PROJ.magic = await loadImage(IMAGES.PROJ.magic);
     assets.PROJ.short = await loadImage(IMAGES.PROJ.short);
+    assets.PROJ.golem = await loadImage(IMAGES.PROJ.golem);
   }
 
   // ====== 状態 ======
@@ -277,14 +288,15 @@
       this.speed=speed||220;
       this.startX = x;
       this.maxTravel = maxTravel; // null=無制限
-      this.wobble = wobble;       // 短距離弾はふわっと揺れる
+      this.wobble = wobble;       // ふわっと揺れる
     }
     step(dt){
       this.x += (this.side>0?1:-1) * this.speed * dt;
-      // ビジュアル
-      this.angle += (this.speed>=PROJ_SPEED_WIZ ? 10 : 6) * dt; // 速い弾ほど回転速く
+      // 見た目
+      this.angle += (this.speed>=230 ? 10 : 6) * dt;
       const wobY = this.wobble ? Math.sin(this.x*0.08)*4 : 0;
-      // 当たり判定（最短の生きた敵/味方）
+
+      // 当たり（最短の生きた敵/味方）
       const foes = this.side>0 ? enemies : allies;
       for(const f of foes){
         if(f.state==="dead") continue;
@@ -298,12 +310,10 @@
       if(Math.abs(foeTower.x - this.x) <= PROJ_HIT_R){
         foeTower.hp -= this.atk; this.dead=true; return;
       }
-      // 画面外
+      // 外/寿命
       if(this.x < -40 || this.x > W+40) this.dead=true;
-      // 短距離弾の寿命
       if(this.maxTravel!=null && Math.abs(this.x - this.startX) >= this.maxTravel) this.dead=true;
 
-      // yの揺れは描画時に反映したいので保持
       this._wobY = wobY;
     }
     draw(ctx){
@@ -350,6 +360,20 @@
       return {target:nearest, dist:best};
     }
 
+    // ゴレムの壁効果：相手の移動を減速させる（ゴレム以外のユニットに適用）
+    static slowFactorNearGolem(unit){
+      if(unit.kind==="GOLEM") return 1.0;
+      const foes = unit.side>0 ? enemies : allies;
+      for(const f of foes){
+        if(f.state==="dead" || f.kind!=="GOLEM") continue;
+        const dx = f.x - unit.x;
+        // 正面側にゴレムが近接しているか
+        if(unit.side>0 && dx>=0 && dx<=GOLEM_BLOCK_DIST) return GOLEM_SLOW_RATE;
+        if(unit.side<0 && dx<=0 && -dx<=GOLEM_BLOCK_DIST) return GOLEM_SLOW_RATE;
+      }
+      return 1.0;
+    }
+
     step(dt){
       if(this.state==="dead") return;
       this.cool = Math.max(0, this.cool - dt);
@@ -360,7 +384,7 @@
         if(this.cool===0){
           this.state="atk"; this.animT=0;
           if(this.proj){
-            // 遠/短距離弾：発射（ヒット時ダメージ）
+            // 投射：ヒット時にダメージ
             projectiles.push(new Projectile({
               x:this.x + (this.side>0?+10:-10), y:this.y,
               side:this.side, atk:this.atk,
@@ -377,7 +401,9 @@
         }
       }else{
         this.state="walk";
-        this.x += this.side * this.speed * dt;
+        // 壁（ゴレム）に近いなら減速
+        let spd = this.speed * Unit.slowFactorNearGolem(this);
+        this.x += this.side * spd * dt;
         const g = geom();
         const limitL = g.L_TOWER_X + 18;
         const limitR = g.R_TOWER_X - 18;
@@ -424,7 +450,7 @@
       ctx.restore();
 
       // HPバー
-      const hpw = 40, hph=5, x = this.x - hpw/2, y = (this.y + hoverY) - h*0.9;
+      const hpw = 46, hph=5, x = this.x - hpw/2, y = (this.y + hoverY) - h*0.9;
       const rate = Math.max(0,this.hp)/this.maxHp;
       ctx.fillStyle="#000000aa"; ctx.fillRect(x,y,hpw,hph);
       ctx.fillStyle = mixHex("#ef5350","#4caf50", rate);
@@ -553,6 +579,7 @@
   document.getElementById("btnFtr").addEventListener("click", ()=>spawnAlly("FTR"));
   document.getElementById("btnEvil").addEventListener("click", ()=>spawnAlly("TEKI"));
   document.getElementById("btnWiz").addEventListener("click", ()=>spawnAlly("WIZ"));
+  document.getElementById("btnGolem").addEventListener("click", ()=>spawnAlly("GOLEM"));
   document.getElementById("pausePill").addEventListener("click", ()=>{
     paused = !paused;
     document.getElementById("pausePill").textContent = paused ? "▶ Resume" : "⏸ Pause";

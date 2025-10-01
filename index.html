@@ -3,50 +3,47 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
-<title>MOB TD – 最小プロト</title>
+<title>MOB TD – グリッド分離版</title>
 <meta name="theme-color" content="#0b0c10" />
 <style>
   :root{
-    /* 画面レイアウト（縦画面ベース） */
-    --stage-w: 420px;    /* 表示領域の基準幅（縦スマホで見やすい幅） */
-    --stage-h: 740px;    /* 基準高さ */
-    /* UI色 */
-    --hud-bg: #0e1118cc;
-    --hud-fg: #e8f0ff;
+    /* スマホ縦画面の見やすさ優先。幅はやや狭めで片手操作しやすく */
+    --app-w: 420px;
+    /* グリッドの行高：HUD / PLAY / CONTROLS */
+    --row-hud: 56px;
+    --row-controls: 160px;
+    /* 色 */
+    --hud-bg: #0e1118f0;
+    --hud-fg: #eaf3ff;
     --hud-accent: #4dd0ff;
+    --panel-bg: #0b1424f2;
+    --panel-stroke: #1b2a44;
+    --panel-shadow: 0 10px 28px rgba(0,0,0,.4);
     --hp-green: #4caf50;
-    --hp-red: #ef5350;
+    --hp-red:   #ef5350;
   }
-  html,body{height:100%;margin:0;background:#000;color:#fff;font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Hiragino Kaku Gothic ProN", Meiryo, sans-serif;touch-action: manipulation;overscroll-behavior:none}
+  html,body{height:100%;margin:0;background:#000;color:#fff;font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Hiragino Kaku Gothic ProN", Meiryo, sans-serif;overscroll-behavior:none}
   *{box-sizing:border-box}
 
   #root{position:fixed;inset:0;display:grid;place-items:center}
-  #game{
-    width:min(100vw, var(--stage-w));
+  #app{
+    width:min(100vw, var(--app-w));
     height:100dvh;
-    max-height:var(--stage-h);
-    position:relative; overflow:hidden; background:#000;
-    border:1px solid #0e1522; border-radius:18px;
-    box-shadow:0 14px 48px rgba(0,0,0,.5);
+    display:grid;
+    grid-template-rows: calc(var(--row-hud) + env(safe-area-inset-top)) 1fr calc(var(--row-controls) + env(safe-area-inset-bottom));
+    background:#05080f;
+    border:1px solid #0e1522; border-radius:18px; overflow:hidden;
+    box-shadow:0 14px 48px rgba(0,0,0,.55);
   }
 
-  /* キャンバス領域 */
-  #view{
-    position:absolute; inset:0;
-    image-rendering: pixelated;
-    background:#000;
-  }
-
-  /* 上部HUD（コイン、コスト、ポーズ等） */
-  .topbar{
-    position:absolute; left:0; right:0; top:env(safe-area-inset-top);
+  /* ====== HUD行 ====== */
+  header.hud{
     display:flex; align-items:center; gap:8px;
-    padding:10px 12px;
-    background:linear-gradient(to bottom, #000000b0, #00000040);
-    pointer-events:none;
+    padding:8px 10px calc(8px + env(safe-area-inset-top)) 10px;
+    background:linear-gradient(to bottom,#020409,#0b1220);
+    border-bottom:1px solid #0f1b2e;
   }
   .pill{
-    pointer-events:auto;
     background:var(--hud-bg); color:var(--hud-fg);
     border:1px solid #1b2638; border-radius:999px; padding:6px 10px; font-size:14px;
     display:flex; align-items:center; gap:8px;
@@ -54,18 +51,43 @@
   }
   .pill b{color:var(--hud-accent)}
   .spacer{flex:1}
+  .tiny{font-size:12px; opacity:.9}
+  .clickable{cursor:pointer}
 
-  /* 下部コマンド */
-  .bottombar{
-    position:absolute; left:0; right:0; bottom:calc(env(safe-area-inset-bottom) + 8px);
-    display:flex; gap:10px; justify-content:center; padding:8px 10px;
+  /* ====== プレイ領域（Canvas専用） ====== */
+  main.play{
+    position:relative; background:#000;
+  }
+  #view{
+    position:absolute; inset:0;
+    width:100%; height:100%;
+    image-rendering: pixelated;
+    display:block;
+  }
+  /* 中央メッセージ（プレイ領域内のみ表示） */
+  .center-msg{
+    position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
+    padding:8px 12px; border-radius:10px; background:#00000099; border:1px solid #24324f;
+    font-size:12px; text-align:center; pointer-events:none;
+  }
+
+  /* ====== 操作パネル行 ====== */
+  footer.controls{
+    padding:10px 10px calc(12px + env(safe-area-inset-bottom)) 10px;
+    background:linear-gradient(to top,#091323,#0b1424cc);
+    border-top:1px solid #0f1b2e;
+  }
+  .grid2{
+    height:100%;
+    display:grid;
+    grid-template-columns: 1fr 1fr;
+    gap:10px;
   }
   .card{
-    width:46%; max-width:220px;
-    background:var(--hud-bg); color:var(--hud-fg);
-    border:1px solid #1b2638; border-radius:14px; padding:10px;
-    display:grid; gap:6px; text-align:center;
-    box-shadow:0 6px 18px rgba(0,0,0,.35);
+    background:var(--panel-bg); color:#e7f1ff;
+    border:1px solid var(--panel-stroke); border-radius:14px; padding:10px;
+    display:grid; align-content:start; gap:8px; text-align:center;
+    box-shadow:var(--panel-shadow);
   }
   .card h3{margin:0; font-size:14px; letter-spacing:.3px}
   .cost{font-size:12px; opacity:.9}
@@ -77,133 +99,105 @@
   .btn:disabled{opacity:.5; filter:grayscale(.3); cursor:not-allowed}
   .hint{font-size:11px; opacity:.8}
 
-  /* 画面中央にメッセージ */
-  .center-msg{
-    position:absolute; left:50%; top:42%; transform:translate(-50%,-50%);
-    padding:8px 12px; border-radius:10px; background:#00000099; border:1px solid #24324f;
-    font-size:12px; text-align:center; pointer-events:none;
-  }
-
-  /* 簡易トグル */
-  .tiny{font-size:12px; opacity:.9}
-
 </style>
 </head>
 <body>
 <div id="root">
-  <div id="game">
-    <canvas id="view"></canvas>
-
-    <div class="topbar">
+  <div id="app">
+    <!-- ===== HUD行 ===== -->
+    <header class="hud">
       <div class="pill" id="coinBox">💰 <b id="coins">0</b></div>
       <div class="pill tiny" id="income">+8 / 3s</div>
       <div class="spacer"></div>
       <div class="pill tiny" id="fpsBox">FPS: <b id="fps">60</b></div>
-      <div class="pill tiny" id="pausePill" style="cursor:pointer">⏸ Pause</div>
-    </div>
+      <div class="pill tiny clickable" id="pausePill">⏸ Pause</div>
+    </header>
 
-    <div class="center-msg" id="msg">画面下のボタンでユニットを出撃できます</div>
+    <!-- ===== プレイ領域（Canvasだけ） ===== -->
+    <main class="play">
+      <canvas id="view"></canvas>
+      <div class="center-msg" id="msg">下のボタンでユニットを出撃できます</div>
+    </main>
 
-    <div class="bottombar">
-      <div class="card">
-        <h3>MOB段ボール</h3>
-        <div class="cost">コスト <b>50</b> / HP150 / 近接</div>
-        <button class="btn" id="btnBox">出撃</button>
-        <div class="hint">C1〜C4.png を使用</div>
+    <!-- ===== 操作パネル行 ===== -->
+    <footer class="controls">
+      <div class="grid2">
+        <div class="card">
+          <h3>MOB段ボール</h3>
+          <div class="cost">コスト <b>50</b> / HP150 / 近接</div>
+          <button class="btn" id="btnBox">出撃</button>
+          <div class="hint">C1〜C4.png を使用</div>
+        </div>
+        <div class="card">
+          <h3>MOBファイター</h3>
+          <div class="cost">コスト <b>120</b> / HP120 / 近接（速）</div>
+          <button class="btn" id="btnFtr">出撃</button>
+          <div class="hint">EN1-1〜EN1-5.png を使用</div>
+        </div>
       </div>
-      <div class="card">
-        <h3>MOBファイター</h3>
-        <div class="cost">コスト <b>120</b> / HP120 / 近接（速）</div>
-        <button class="btn" id="btnFtr">出撃</button>
-        <div class="hint">EN1-1〜EN1-5.png を使用</div>
-      </div>
-    </div>
+    </footer>
   </div>
 </div>
 
 <script>
 (() => {
-  // ====== 画像パス（同フォルダに置いてください） ======
+  // ====== 画像パス（同フォルダ） ======
   const IMAGES = {
     bg: "sora.png",
     floor: "doro.png",
     towerL: "T1.png",
     towerR: "T2.png",
-    BOX: {
-      idle: "C1.png",
-      walk: ["C2.png","C3.png"],      // 2枚ループ
-      atk:  "C4.png"
-    },
-    FTR: {
-      idle: "EN1-1.png",
-      walk: ["EN1-2.png","EN1-3.png"],// 2枚ループ
-      atk:  ["EN1-4.png","EN1-5.png"] // 2枚ループ
-    }
+    BOX: { idle:"C1.png", walk:["C2.png","C3.png"], atk:"C4.png" },
+    FTR: { idle:"EN1-1.png", walk:["EN1-2.png","EN1-3.png"], atk:["EN1-4.png","EN1-5.png"] }
   };
 
-  // ====== ゲーム定数 ======
-  const W = 420;            // 論理幅（縦画面向け）
-  const H = 740;            // 論理高さ
-  const GROUND_Y = 540;     // フロア基準Y（キャラ足元が乗るライン）
-  const L_TOWER_X = 48;     // 左タワーX
-  const R_TOWER_X = W - 48; // 右タワーX
-  const LANE_TOP = 320;     // フロアタイル表示開始Y
-  const COIN_TICK = 3000;   // コイン増分間隔(ms)
-  const COIN_ADD = 8;       // 3秒で+8（序盤の操作感を想定）
-  const MELEE_RANGE = 26;   // 近接レンジ(px)
-
-  // 速度（px/sec）。ユーザー指定の移動速度「3」「5」を落ち着いた体感へ
-  const PX_PER_SPEED = 18;  // 1レベルあたりの係数：18px/s
-  // アニメ速度
-  const WALK_FPS = 6;       // 歩行アニメ 6fps
-  const ATK_FPS  = 7;
-
-  // ====== ユニット設計（指定値反映） ======
-  const UNIT_KINDS = {
-    BOX: {
-      name: "MOB段ボール",
-      hp: 150,
-      atk: 20,
-      atkInt: 1.0,
-      speed: 3,     // 中
-      cost: 50,
-      imgs: IMAGES.BOX,
-      scale: 0.6    // 小さめに表示
-    },
-    FTR: {
-      name: "MOBファイター",
-      hp: 120,
-      atk: 30,
-      atkInt: 0.7,
-      speed: 5,     // 速
-      cost: 120,
-      imgs: IMAGES.FTR,
-      scale: 0.6
-    }
-  };
-
-  // ====== キャンバス準備 ======
+  // ====== DOM ======
   const canvas = document.getElementById("view");
   const ctx = canvas.getContext("2d");
-  const gameEl = document.getElementById("game");
-  function resizeCanvas(){
+  const playEl = document.querySelector("main.play");
+  const coinsEl = document.getElementById("coins");
+  const fpsEl = document.getElementById("fps");
+  const msgEl = document.getElementById("msg");
+
+  // ====== レイアウトに追従するキャンバスサイズ ======
+  let W = 420, H = 560; // 初期値（実際はmeasure()で上書き）
+  function measure(){
+    const r = playEl.getBoundingClientRect();
+    W = Math.max(320, Math.round(r.width));
+    H = Math.max(360, Math.round(r.height));
     canvas.width = W;
-    // 安全に上下に余白を残しつつ、UIが被らないよう基準高を採用
     canvas.height = H;
   }
-  resizeCanvas();
-  addEventListener("resize", resizeCanvas);
+  measure();
+  addEventListener("resize", measure);
+
+  // ====== フロアとタワーの基準位置（常にプレイ領域に対して計算） ======
+  function geom(){
+    const groundBandH = Math.round(H * 0.22);                 // 下部22%を路面帯に
+    const groundTopY  = H - groundBandH;                      // 帯の開始＝上端
+    const GROUND_Y    = groundTopY + Math.round(groundBandH*0.85); // キャラの足元
+    const L_TOWER_X   = Math.round(W * 0.09);
+    const R_TOWER_X   = Math.round(W * 0.91);
+    return { groundBandH, groundTopY, GROUND_Y, L_TOWER_X, R_TOWER_X };
+  }
+
+  // ====== 表示・戦闘の定数 ======
+  const COIN_TICK = 3000, COIN_ADD = 8;
+  const MELEE_RANGE = 26;
+  const PX_PER_SPEED = 18;      // 移動スピード係数（px/s）
+  const WALK_FPS = 6, ATK_FPS = 7;
+
+  // ====== ユニット定義 ======
+  const UNIT_KINDS = {
+    BOX: { name:"MOB段ボール", hp:150, atk:20, atkInt:1.0, speed:3, cost:50, imgs:"BOX", scale:0.6 },
+    FTR: { name:"MOBファイター", hp:120, atk:30, atkInt:0.7, speed:5, cost:120, imgs:"FTR", scale:0.6 }
+  };
 
   // ====== 画像読み込み ======
   function loadImage(src){
-    return new Promise((res, rej) => {
+    return new Promise((res) => {
       const img = new Image();
-      img.src = src;
-      img.onload = () => res(img);
-      img.onerror = () => {
-        console.warn("画像の読み込みに失敗:", src);
-        res(null); // 失敗しても進行できるようnullで解決
-      };
+      img.src = src; img.onload = ()=>res(img); img.onerror = ()=>res(null);
     });
   }
   const assets = {};
@@ -212,374 +206,264 @@
     assets.floor = await loadImage(IMAGES.floor);
     assets.towerL = await loadImage(IMAGES.towerL);
     assets.towerR = await loadImage(IMAGES.towerR);
-
-    // ユニット画像
     for(const key of ["BOX","FTR"]){
       const set = IMAGES[key];
       assets[key] = { idle:null, walk:[], atk:[] };
       assets[key].idle = await loadImage(set.idle);
-      const walkArr = Array.isArray(set.walk) ? set.walk : [set.walk];
-      for(const s of walkArr) assets[key].walk.push(await loadImage(s));
-      const atkArr = Array.isArray(set.atk) ? set.atk : [set.atk];
-      for(const s of atkArr) assets[key].atk.push(await loadImage(s));
+      for(const s of (Array.isArray(set.walk)?set.walk:[set.walk])) assets[key].walk.push(await loadImage(s));
+      for(const s of (Array.isArray(set.atk)?set.atk:[set.atk])) assets[key].atk.push(await loadImage(s));
     }
   }
 
-  // ====== ゲーム状態 ======
-  let coins = 50; // 開始時少しだけ
-  let lastCoinTick = 0;
-  let paused = false;
+  // ====== 状態 ======
+  let coins = 50, lastCoinTick = 0, paused = false;
+  let lastTime = performance.now(), fpsSmoothed = 60;
 
-  // タワー
-  const towerL = { x:L_TOWER_X, y:GROUND_Y, hp: 1200, side: +1 }; // 味方
-  const towerR = { x:R_TOWER_X, y:GROUND_Y, hp: 1200, side: -1 }; // 敵
+  // タワー（geom()依存のためダミーで生成→起動時に座標設定）
+  const towerL = { x:0, y:0, hp:1200, side:+1 };
+  const towerR = { x:0, y:0, hp:1200, side:-1 };
 
-  // ユニット配列
-  const allies = [];
-  const enemies = [];
+  const allies = [], enemies = [];
+  const hits = [];
 
-  // 敵は「1体ずつ」—前が倒れたら次を出す
-  let enemyQueue = [
-    { kind:"BOX" }, { kind:"BOX" }, { kind:"BOX" },
-    { kind:"BOX" }, { kind:"BOX" }, { kind:"BOX" },
-  ];
+  let enemyQueue = [{kind:"BOX"},{kind:"BOX"},{kind:"BOX"},{kind:"BOX"},{kind:"BOX"}];
   let enemyActive = false;
 
-  // FPS計測
-  let lastTime = performance.now();
-  let fpsSmoothed = 60;
+  // ====== 単位色補間（HPバー用） ======
+  function mixHex(a,b,t){
+    function toRGB(h){const n=parseInt(h.slice(1),16);return {r:(n>>16)&255,g:(n>>8)&255,b:n&255}}
+    function toHex(r,g,b){return "#"+[r,g,b].map(v=>v.toString(16).padStart(2,"0")).join("")}
+    const A=toRGB(a), B=toRGB(b);
+    return toHex(
+      Math.round(A.r*(1-t)+B.r*t),
+      Math.round(A.g*(1-t)+B.g*t),
+      Math.round(A.b*(1-t)+B.b*t)
+    );
+  }
 
-  // ====== ユニットクラス ======
-  class Unit {
+  // ====== ユニット ======
+  class Unit{
     constructor(kindKey, side){
       const def = UNIT_KINDS[kindKey];
-      this.kind = kindKey;
-      this.side = side;              // +1:右へ（味方） -1:左へ（敵）
-      this.x = side>0 ? (towerL.x + 32) : (towerR.x - 32);
-      this.y = GROUND_Y;
-      this.maxHp = def.hp;
-      this.hp = def.hp;
-      this.atk = def.atk;
-      this.atkInt = def.atkInt;
-      this.cool = 0;
-      this.speed = def.speed * PX_PER_SPEED; // px/s
+      this.kind = kindKey; this.side = side;
+      const g = geom();
+      this.x = side>0 ? (g.L_TOWER_X + 28) : (g.R_TOWER_X - 28);
+      this.y = g.GROUND_Y;
+      this.maxHp = def.hp; this.hp = def.hp;
+      this.atk = def.atk; this.atkInt = def.atkInt; this.cool=0;
+      this.speed = def.speed * PX_PER_SPEED;
       this.scale = def.scale;
-      this.state = "walk"; // idle / walk / atk / dead
-      this.animT = 0;
+      this.state = "walk"; this.animT = 0;
     }
-    width(){ return 64 * this.scale; }   // 描画基準（小さめ）
-    height(){ return 64 * this.scale; }
+    width(){ return 64*this.scale; }
+    height(){ return 64*this.scale; }
 
-    // 衝突・攻撃対象探索（前方最短）
     findTarget(){
       const foes = this.side>0 ? enemies : allies;
-      let nearest = null;
-      let best = Infinity;
+      let nearest=null, best=Infinity;
       for(const f of foes){
         if(f.state==="dead") continue;
         const d = Math.abs(f.x - this.x);
-        if(d < best){ best = d; nearest = f; }
+        if(d<best){best=d; nearest=f;}
       }
-      // タワーも対象
       const foeTower = this.side>0 ? towerR : towerL;
       const dT = Math.abs(foeTower.x - this.x);
-      if(dT < best){ best = dT; nearest = foeTower; }
-      return { target: nearest, dist: best };
+      if(dT<best){best=dT; nearest=foeTower;}
+      return {target:nearest, dist:best};
     }
 
     step(dt){
       if(this.state==="dead") return;
-      // 攻撃クールダウン
       this.cool = Math.max(0, this.cool - dt);
-
       const { target, dist } = this.findTarget();
-
-      const inRange = target ? dist <= MELEE_RANGE : false;
+      const inRange = target && dist <= MELEE_RANGE;
 
       if(inRange){
-        // 攻撃
         if(this.cool===0){
-          this.state = "atk";
-          this.animT = 0;
-          if(target.hp !== undefined){
-            target.hp -= this.atk;
-            // ヒットフラッシュ
-            flash(target);
-          }
+          this.state="atk"; this.animT=0;
+          if(target.hp!==undefined){ target.hp -= this.atk; flash(target); }
           this.cool = this.atkInt;
         }
       }else{
-        // 前進（速すぎないよう数値を控えめに）
-        this.state = "walk";
+        this.state="walk";
         this.x += this.side * this.speed * dt;
-        // 進み過ぎ防止（タワーめり込み回避）
-        const limitL = towerL.x + 18;
-        const limitR = towerR.x - 18;
+        // タワーめり込み制限
+        const g = geom();
+        const limitL = g.L_TOWER_X + 18;
+        const limitR = g.R_TOWER_X - 18;
         if(this.side>0 && this.x>limitR) this.x = limitR;
         if(this.side<0 && this.x<limitL) this.x = limitL;
       }
 
-      // 死亡判定
-      if(this.hp<=0){
-        this.state = "dead";
-      }
-
-      // アニメ時間
+      if(this.hp<=0) this.state="dead";
       this.animT += dt;
     }
 
     draw(ctx){
       if(this.state==="dead") return;
       const A = assets[this.kind];
-
-      // 画像選択
-      let img = null;
+      let img=null;
       if(this.state==="walk"){
-        const idx = Math.floor(this.animT * WALK_FPS) % Math.max(1, A.walk.length);
-        img = A.walk[idx] || A.idle;
+        img = A.walk[Math.floor(this.animT*WALK_FPS)%Math.max(1,A.walk.length)] || A.idle;
       }else if(this.state==="atk"){
-        const idx = Math.floor(this.animT * ATK_FPS) % Math.max(1, A.atk.length);
-        img = A.atk[idx] || A.idle;
-      }else{
-        img = A.idle;
-      }
-      const w = this.width(), h = this.height();
-      const flip = this.side<0;
+        img = A.atk[Math.floor(this.animT*ATK_FPS)%Math.max(1,A.atk.length)] || A.idle;
+      }else img = A.idle;
 
+      const w=this.width(), h=this.height();
+      const flip = this.side<0;
       ctx.save();
       ctx.translate(this.x, this.y);
-      if(flip){ ctx.scale(-1,1); }
-      // 足元基準で描画（少し上に置いて接地感）
+      if(flip) ctx.scale(-1,1);
       drawImageCentered(ctx, img, 0, -h*0.6, w, h);
       ctx.restore();
 
-      // HPバー（小さく）
-      const hpw = 40, hph = 5, x = this.x - hpw/2, y = this.y - h*0.9;
-      const hpRate = Math.max(0, this.hp) / this.maxHp;
-      ctx.fillStyle = "#000000aa"; ctx.fillRect(x, y, hpw, hph);
-      ctx.fillStyle = mixColor(getVar("--hp-red"), getVar("--hp-green"), hpRate);
-      ctx.fillRect(x, y, hpw*hpRate, hph);
-      ctx.strokeStyle = "#1a263d"; ctx.strokeRect(x+0.5, y+0.5, hpw-1, hph-1);
-    }
-  }
-
-  // ====== ヒット演出 ======
-  const hits = [];
-  function flash(target){
-    hits.push({ x: target.x, y: target.y - 28, t: 0 });
-  }
-
-  // ====== 描画ユーティリティ ======
-  function drawImageCentered(ctx, img, cx, cy, w, h){
-    if(!img){ // 代替：枠
-      ctx.fillStyle = "#8888";
-      ctx.fillRect(cx - w/2, cy - h/2, w, h);
-      return;
-    }
-    ctx.drawImage(img, cx - w/2, cy - h/2, w, h);
-  }
-  function getVar(name){
-    return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-  }
-  function mixColor(a, b, t){
-    // #rrggbb を線形補間
-    function hexToRgb(s){ const n=parseInt(s.replace("#",""),16); return {r:(n>>16)&255,g:(n>>8)&255,b:n&255};}
-    function rgbToHex(r,g,b){ return "#"+[r,g,b].map(v=>v.toString(16).padStart(2,"0")).join("");}
-    const A = hexToRgb(a), B = hexToRgb(b);
-    const r = Math.round(A.r*(1-t)+B.r*t);
-    const g = Math.round(A.g*(1-t)+B.g*t);
-    const b2= Math.round(A.b*(1-t)+B.b*t);
-    return rgbToHex(r,g,b2);
-  }
-
-  // ====== ゲームループ ======
-  function step(dt){
-    if(paused) return;
-
-    // コイン自然増加
-    const now = performance.now();
-    if(now - lastCoinTick >= COIN_TICK){
-      coins += COIN_ADD;
-      lastCoinTick = now;
-    }
-
-    // 敵スポーン（1体ずつ）
-    if(!enemyActive && enemyQueue.length>0){
-      spawnEnemy(enemyQueue.shift().kind);
-      enemyActive = true;
-    }
-
-    // 各ユニット更新
-    for(const u of allies) u.step(dt);
-    for(const u of enemies) u.step(dt);
-
-    // 死亡掃除
-    for(let i=enemies.length-1;i>=0;i--){
-      if(enemies[i].state==="dead") enemies.splice(i,1);
-    }
-    for(let i=allies.length-1;i>=0;i--){
-      if(allies[i].state==="dead") allies.splice(i,1);
-    }
-
-    // 敵側：場にいなければ次を出す
-    if(enemyActive && enemies.length===0){
-      enemyActive = false;
-    }
-
-    // タワーHP <= 0 で勝敗
-    if(towerL.hp<=0 || towerR.hp<=0){
-      paused = true;
-      const msg = document.getElementById("msg");
-      msg.textContent = (towerR.hp<=0) ? "勝利！" : "敗北…";
-      msg.style.display = "block";
-    }
-
-    // ヒット演出
-    for(let i=hits.length-1;i>=0;i--){
-      hits[i].t += dt;
-      if(hits[i].t>0.25) hits.splice(i,1);
-    }
-  }
-
-  function draw(){
-    // 背景
-    ctx.clearRect(0,0,W,H);
-    if(assets.bg){
-      // 背景は全体にフィット（上下優先）
-      const bg = assets.bg;
-      const ratio = Math.max(W/bg.width, H/bg.height);
-      const bw = bg.width*ratio, bh = bg.height*ratio;
-      ctx.drawImage(bg, (W-bw)/2, (H-bh)/2, bw, bh);
-    }else{
-      ctx.fillStyle = "#0a0f1a"; ctx.fillRect(0,0,W,H);
-    }
-
-    // フロア（上部を歩くイメージ）
-    if(assets.floor){
-      const fh = 140; // 表示高さ
-      const y = LANE_TOP;
-      const patternW = assets.floor.width;
-      const scale = (fh / assets.floor.height);
-      const drawW = patternW * scale;
-      for(let x= -((Date.now()/50)%drawW); x<W+drawW; x+=drawW){
-        ctx.drawImage(assets.floor, x, y, drawW, fh);
-      }
-    }else{
-      ctx.fillStyle = "#2c2c2c";
-      ctx.fillRect(0, LANE_TOP, W, 140);
-    }
-
-    // タワー
-    function drawTower(t, img){
-      const tw = 84, th = 140;
-      const flip = t.side<0;
-      ctx.save();
-      ctx.translate(t.x, GROUND_Y);
-      if(flip) ctx.scale(-1,1);
-      drawImageCentered(ctx, img, 0, -th*0.62, tw, th);
-      ctx.restore();
-
       // HPバー
-      const hpw = 90, hph=7, x = t.x - hpw/2, y = GROUND_Y - 120;
-      const rate = Math.max(0,t.hp)/1200;
-      ctx.fillStyle = "#000000aa"; ctx.fillRect(x,y,hpw,hph);
-      ctx.fillStyle = mixColor(getVar("--hp-red"), getVar("--hp-green"), rate);
+      const hpw = 40, hph=5, x = this.x - hpw/2, y = this.y - h*0.9;
+      const rate = Math.max(0,this.hp)/this.maxHp;
+      ctx.fillStyle="#000000aa"; ctx.fillRect(x,y,hpw,hph);
+      ctx.fillStyle = mixHex("#ef5350","#4caf50", rate);
       ctx.fillRect(x,y,hpw*rate,hph);
-      ctx.strokeStyle = "#1a263d"; ctx.strokeRect(x+0.5,y+0.5,hpw-1,hph-1);
-    }
-    drawTower(towerL, assets.towerL);
-    drawTower(towerR, assets.towerR);
-
-    // ソートして描画（XでOK）
-    const all = [...allies, ...enemies].sort((a,b)=>a.x-b.x);
-    for(const u of all) u.draw(ctx);
-
-    // ヒットフラッシュ
-    for(const h of hits){
-      const a = Math.max(0, 1 - h.t*4);
-      ctx.save();
-      ctx.globalAlpha = a;
-      ctx.fillStyle = "#ffd180";
-      ctx.beginPath();
-      ctx.arc(h.x, h.y, 10 + h.t*40, 0, Math.PI*2);
-      ctx.fill();
-      ctx.restore();
+      ctx.strokeStyle="#1a263d"; ctx.strokeRect(x+0.5,y+0.5,hpw-1,hph-1);
     }
   }
 
-  // ====== スポーン処理 ======
+  function drawImageCentered(ctx,img,cx,cy,w,h){
+    if(!img){ ctx.fillStyle="#8886"; ctx.fillRect(cx-w/2, cy-h/2, w, h); return; }
+    ctx.drawImage(img, cx-w/2, cy-h/2, w, h);
+  }
+
+  function flash(target){ hits.push({x:target.x, y:target.y-28, t:0}); }
+
+  // ====== スポーン ======
   function spawnAlly(kind){
     const def = UNIT_KINDS[kind];
     if(coins < def.cost) return;
     coins -= def.cost;
     allies.push(new Unit(kind, +1));
-    pulseMsg(`${def.name} 出撃！`);
+    pulse(`{ ${def.name} 出撃 }`);
   }
-  function spawnEnemy(kind){
-    enemies.push(new Unit(kind, -1));
-  }
+  function spawnEnemy(kind){ enemies.push(new Unit(kind, -1)); }
 
-  // ====== 当たり判定とタワー攻撃（近接圏内のとき） ======
-  // Unit.step内で対象検索→ダメージ適用しているため、ここではタワー側の死亡処理だけ追加
-  const _origStep = Unit.prototype.step;
+  // ====== 進行 ======
+  function step(dt){
+    if(paused) return;
+    const now = performance.now();
+    if(now - lastCoinTick >= COIN_TICK){ coins += COIN_ADD; lastCoinTick = now; }
 
-  Unit.prototype.step = function(dt){
-    _origStep.call(this, dt);
-    // タワー死亡時にHP0制御（負数暴走防止）
-    if(towerL.hp<0) towerL.hp = 0;
-    if(towerR.hp<0) towerR.hp = 0;
+    if(!enemyActive && enemyQueue.length>0){ spawnEnemy(enemyQueue.shift().kind); enemyActive = true; }
 
-    // タワーが対象のときはUnit.findTarget()内でhpを減らしている
-    // タワーが倒れたら演出はdraw側のHPバーとメッセージで完結
-  };
+    for(const u of allies) u.step(dt);
+    for(const u of enemies) u.step(dt);
 
-  // ====== UI ======
-  const coinsEl = document.getElementById("coins");
-  const fpsEl = document.getElementById("fps");
-  const msgEl = document.getElementById("msg");
-  function pulseMsg(t){
-    msgEl.textContent = t;
-    msgEl.style.display = "block";
-    clearTimeout(pulseMsg._t);
-    pulseMsg._t = setTimeout(()=>{ msgEl.style.display="none"; }, 1200);
+    // 死亡掃除
+    for(let i=enemies.length-1;i>=0;i--) if(enemies[i].state==="dead") enemies.splice(i,1);
+    for(let i=allies.length-1;i>=0;i--) if(allies[i].state==="dead") allies.splice(i,1);
+
+    // 敵：全滅で次キュー可能に
+    if(enemyActive && enemies.length===0) enemyActive=false;
+
+    // ヒット演出
+    for(let i=hits.length-1;i>=0;i--){ hits[i].t += dt; if(hits[i].t>0.25) hits.splice(i,1); }
   }
 
-  document.getElementById("btnBox").addEventListener("click", () => spawnAlly("BOX"));
-  document.getElementById("btnFtr").addEventListener("click", () => spawnAlly("FTR"));
-  document.getElementById("pausePill").addEventListener("click", () => {
-    paused = !paused;
-    document.getElementById("pausePill").textContent = paused ? "▶ Resume" : "⏸ Pause";
-    if(!paused){ lastTime = performance.now(); loop(); }
-  }, {passive:true});
+  function draw(){
+    const g = geom();
+
+    // 背景（プレイ領域全体にフィット）
+    ctx.clearRect(0,0,W,H);
+    if(assets.bg){
+      const bg = assets.bg;
+      const r = Math.max(W/bg.width, H/bg.height);
+      const bw = bg.width*r, bh = bg.height*r;
+      ctx.drawImage(bg, (W-bw)/2, (H-bh)/2, bw, bh);
+    }else{
+      ctx.fillStyle="#08111f"; ctx.fillRect(0,0,W,H);
+    }
+
+    // フロア帯（必ず下部に表示）
+    if(assets.floor){
+      const fh = g.groundBandH;
+      const y  = g.groundTopY;
+      const patternW = assets.floor.width;
+      const scale = (fh / assets.floor.height);
+      const drawW = patternW * scale;
+      for(let x = -((Date.now()/70)%drawW); x<W+drawW; x+=drawW){
+        ctx.drawImage(assets.floor, x, y, drawW, fh);
+      }
+    }else{
+      ctx.fillStyle="#2c2c2c"; ctx.fillRect(0,g.groundTopY,W,g.groundBandH);
+    }
+
+    // タワー
+    function drawTower(t, img){
+      const th = Math.min(140, Math.round(H*0.22));
+      const tw = Math.round(th * 0.6);
+      const flip = t.side<0;
+      ctx.save();
+      ctx.translate(t.x, g.GROUND_Y);
+      if(flip) ctx.scale(-1,1);
+      drawImageCentered(ctx, img, 0, -th*0.62, tw, th);
+      ctx.restore();
+      // HP
+      const hpw = Math.round(W*0.22), hph=7, x=t.x-hpw/2, y=g.GROUND_Y - th*0.85;
+      const rate = Math.max(0,t.hp)/1200;
+      ctx.fillStyle="#000000aa"; ctx.fillRect(x,y,hpw,hph);
+      ctx.fillStyle=mixHex("#ef5350","#4caf50", rate); ctx.fillRect(x,y,hpw*rate,hph);
+      ctx.strokeStyle="#1a263d"; ctx.strokeRect(x+0.5,y+0.5,hpw-1,hph-1);
+    }
+    drawTower(towerL, assets.towerL);
+    drawTower(towerR, assets.towerR);
+
+    // ユニット（x順）
+    const all = [...allies,...enemies].sort((a,b)=>a.x-b.x);
+    for(const u of all) u.draw(ctx);
+
+    // ヒット演出
+    for(const h of hits){
+      const a = Math.max(0, 1 - h.t*4);
+      ctx.save(); ctx.globalAlpha = a;
+      ctx.fillStyle="#ffd180";
+      ctx.beginPath(); ctx.arc(h.x, h.y, 10 + h.t*40, 0, Math.PI*2); ctx.fill();
+      ctx.restore();
+    }
+  }
 
   // ====== ループ ======
   function loop(){
     if(paused) return;
     const now = performance.now();
-    let dt = (now - lastTime) / 1000;
-    lastTime = now;
-    // 大きいフレーム落ち吸収
+    let dt = (now - lastTime)/1000; lastTime = now;
     dt = Math.min(dt, 0.05);
-
-    step(dt);
-    draw();
-
-    // HUD更新
+    step(dt); draw();
+    // HUD
     coinsEl.textContent = coins|0;
-    // FPS簡易
-    const inst = 1/dt;
-    fpsSmoothed = fpsSmoothed*0.9 + inst*0.1;
-    fpsEl.textContent = Math.round(fpsSmoothed);
-
+    const inst = 1/dt; fpsSmoothed = fpsSmoothed*0.9 + inst*0.1; fpsEl.textContent = Math.round(fpsSmoothed);
     requestAnimationFrame(loop);
   }
 
+  // ====== UI ======
+  function pulse(t){
+    msgEl.textContent = t; msgEl.style.display="block";
+    clearTimeout(pulse._t); pulse._t = setTimeout(()=>{ msgEl.style.display="none"; }, 1000);
+  }
+  document.getElementById("btnBox").addEventListener("click", ()=>spawnAlly("BOX"));
+  document.getElementById("btnFtr").addEventListener("click", ()=>spawnAlly("FTR"));
+  document.getElementById("pausePill").addEventListener("click", ()=>{
+    paused = !paused;
+    document.getElementById("pausePill").textContent = paused ? "▶ Resume" : "⏸ Pause";
+    if(!paused){ lastTime = performance.now(); loop(); }
+  });
+
   // ====== 起動 ======
-  (async () => {
+  (async ()=>{
     await loadAll();
-    // 初期スポーン（敵は最初は出さず、味方出撃を促す）
+    // 初回の幾何→タワー座標を今のプレイ領域に合わせる
+    const g = geom();
+    towerL.x = g.L_TOWER_X; towerL.y = g.GROUND_Y;
+    towerR.x = g.R_TOWER_X; towerR.y = g.GROUND_Y;
+
     lastCoinTick = performance.now();
-    msgEl.style.display = "block";
+    msgEl.style.display="block";
     lastTime = performance.now();
     loop();
   })();

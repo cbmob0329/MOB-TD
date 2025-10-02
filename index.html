@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
-<title>MOB TD – 近接の踏み込み修正（巨神対策込）</title>
+<title>MOB TD – 近距離対峙で立ち絵化（踏み込み修正維持）</title>
 <meta name="theme-color" content="#0b0c10" />
 <style>
   :root{
@@ -159,7 +159,7 @@
   const HOP_AMP_MINI=6;
   const GIANT_CHARGE_TIME=0.60, GIANT_HOP_AMP=14, GIANT_BIGJUMP_AMP=28, GIANT_BIGJUMP_PERIOD=3.0, GIANT_PROJ_TRAVEL=110;
 
-  /* ★ 近接安定化の新定数 */
+  /* 踏み込み＆対峙チューニング */
   const ENGAGE_PAD = 8;          // 基本の余裕
   const CREEP_FACTOR = 0.5;      // ブロック中のにじり寄り速度（歩行速度の何倍）
   const REAR_BACK_FACTOR = 1.35; // 背後再配置の後退倍率
@@ -282,11 +282,11 @@
       this.knockHeights=[16,18,20];
       this._lastDrawOffsets={hoverY:0, hopY:0, swayX:0, knockY:0};
       this._rearRepositionT=0;
+      this.engaged=false; // ★ 近距離対峙中フラグ
     }
     width(){return 64*this.scale;}
     height(){return 64*this.scale;}
 
-    /* 最前方ターゲットの距離・幅等を取得 */
     frontMetrics(){
       let best=Infinity, target=null, targetW=0, isTower=false;
       const foes=this.side>0?enemies:allies;
@@ -297,25 +297,19 @@
       }
       const foeTower=this.side>0?towerR:towerL;
       const dxT=(foeTower.x - this.x)*this.side;
-      if(dxT>=0 && dxT<best){ best=dxT; target=null; targetW=70; isTower=true; } // タワーは仮の幅70
+      if(dxT>=0 && dxT<best){ best=dxT; target=null; targetW=70; isTower=true; }
       return {dist:best, target, targetW, isTower};
     }
-
-    /* 体格に応じて“動的余裕”を加えた実効射程を返す */
     effectiveRange(targetW){
       const sizePad = Math.min(22, Math.floor((this.width() + (targetW||this.width())) * 0.20));
-      const giantPad = this.giant ? 12 : 0; // 巨神はさらに踏み込み余裕
+      const giantPad = this.giant ? 12 : 0;
       const pad = Math.max(ENGAGE_PAD, sizePad) + giantPad;
       return this.rangePx + pad;
     }
-
-    /* 前方にヒット可能か（実効射程で判定） */
     canHitFront(){
       const fm=this.frontMetrics();
       return fm.dist <= this.effectiveRange(fm.targetW);
     }
-
-    /* 前方の全対象に一括ダメージ */
     sweepDamage(){
       const foes=this.side>0?enemies:allies;
       for(const f of foes){
@@ -327,7 +321,6 @@
       const dxT=(foeTower.x - this.x)*this.side;
       if(dxT>=0 && dxT<=this.rangePx){ foeTower.hp -= this.atk; }
     }
-
     static slowFactorNearGolem(unit){
       if(unit.kind==="GOLEM") return 1.0;
       const foes=unit.side>0?enemies:allies;
@@ -339,7 +332,6 @@
       }
       return 1.0;
     }
-
     emitProjectiles(){
       const p=this.proj; if(!p) return;
       const count=p.count||1;
@@ -361,7 +353,6 @@
         }));
       }
     }
-
     hurt(dmg){
       if(this.state==="dead") return;
       const prev=this.hp; this.hp=Math.max(0,this.hp-dmg); flash(this);
@@ -374,6 +365,8 @@
 
     step(dt){
       if(this.state==="dead") return;
+
+      this.engaged=false; // ★ 毎フレーム初期化
 
       /* ノックバック中 */
       if(this.state==="knock" && this.knockActive){
@@ -399,7 +392,7 @@
           if(this.proj){ this.emitProjectiles(); }
           this.sweepDamage();
           this.firePending=false;
-          this.state="walk"; // 撃ち切り後は歩行に戻す
+          this.state="walk";
         }
         return;
       }
@@ -432,10 +425,14 @@
       }
       const g=geom(); const limitL=g.L_TOWER_X+18, limitR=g.R_TOWER_X-18;
 
-      /* 体格に応じたブロック距離。行き過ぎで“踏み込めない”を防ぐためクランプ */
       const contactRaw = Math.max(18, (this.width() + (nearest?nearestW:this.width()))*0.35);
-      const contactGap = Math.min(contactRaw, effRange + 6); // ★ 射程＋余裕＋6pxより遠くで止まらない
+      const contactGap = Math.min(contactRaw, effRange + 6);
       const blocked = nearest && nearestDist <= contactGap;
+
+      /* ★ 対峙判定：前方ブロック中、または射程内でクール中なら立ち絵 */
+      if( (blocked && signedDx >= 0) || (fm.dist <= effRange && this.cool>0) ){
+        this.engaged = true;
+      }
 
       if(blocked){
         if(signedDx < 0){
@@ -447,7 +444,7 @@
           this._rearRepositionT += dt;
           if(this._rearRepositionT > 2.0){ this.x -= this.side*20; this._rearRepositionT=0; }
         }else{
-          /* 前方にいる → 射程外ならブロック中でも“にじり寄り”して入る */
+          /* 前方にいる → 射程外ならにじり寄る（見た目は立ち絵のまま） */
           if(fm.dist > this.rangePx){
             const need = Math.max(0, fm.dist - this.rangePx + 1);
             const creep = Math.min(this.speed*CREEP_FACTOR*dt, need);
@@ -476,7 +473,7 @@
       const def=UNIT_KINDS[this.kind], A=assets[def.key]; let img=null;
 
       const tNow=performance.now()/1000;
-      const hoverY = this.hover ? Math.sin(tNow + this.x*0.01)*6 : 0;
+      let hoverY = this.hover ? Math.sin(tNow + this.x*0.01)*6 : 0;
 
       let hopY=0, useHighJump=false;
       if(this.hop && this.state==="walk"){
@@ -488,13 +485,20 @@
           hopY = -Math.abs(Math.sin(tNow*3 + this.x*0.02))*(this.kind==="ICE"?8:HOP_AMP_MINI);
         }
       }
-      const swayX = (this.sway && this.state==="walk") ? Math.sin(tNow*2.2 + this.x*0.05)*3 : 0;
+      let swayX = (this.sway && this.state==="walk") ? Math.sin(tNow*2.2 + this.x*0.05)*3 : 0;
 
       /* モーション選択 */
-      const ATK_IDLE_PHASE=0.18, ATK_TOTAL=0.36, WALK_FPS=6;
       if(this.state==="walk"){
-        if(this.giant && useHighJump){ img = A.walk[2] || A.idle; }
-        else { img = A.walk[Math.floor(this.animT*WALK_FPS)%Math.max(1,A.walk.length)] || A.idle; }
+        if(this.engaged){
+          img = A.idle;           // ★ 対峙中は立ち絵
+          hopY = 0;               // ★ 揺れ・ホップも止めて“止まっている”見た目
+          swayX = 0;
+          hoverY = this.hover ? Math.sin(tNow + this.x*0.01)*4 : 0; // 浮遊系は弱めに
+        }else if(this.giant && useHighJump){
+          img = A.walk[2] || A.idle;
+        }else{
+          img = A.walk[Math.floor(this.animT*WALK_FPS)%Math.max(1,A.walk.length)] || A.idle;
+        }
       }else if(this.state==="atk"){
         if(this.giant){ img = (this.firePending && this.animT<GIANT_CHARGE_TIME) ? (A.charge||A.idle) : (A.atk[0]||A.idle); }
         else if(this.kind==="ICE"){ img = (this.firePending && this.animT<ICE_CHARGE_TIME) ? (A.charge||A.idle) : (A.atk[0]||A.idle); }
@@ -533,7 +537,7 @@
         const orb=assets.PROJ.ice; const offX=14, offY=-h*0.68; drawImageCentered(ctx, orb, (flip?-offX:offX), offY, 24*s, 24*s);
       }
       if(this.giant && this.state==="atk" && this.firePending){
-        const p=(Math.sin(tNow*12)+1)/2, s=0.4+p*0.3; const orb=assets.PROJ.giant; const offX=18, offY=-h*0.65;
+        const p=(Math.sin(performance.now()/1000*12)+1)/2, s=0.4+p*0.3; const orb=assets.PROJ.giant; const offX=18, offY=-h*0.65;
         drawImageCentered(ctx, orb, (flip?-offX:offX), offY, 26*s, 26*s);
       }
 
@@ -581,7 +585,6 @@
   /* 描画 */
   function draw(){
     const g=geom();
-    const ctx=canvas.getContext("2d");
     ctx.clearRect(0,0,W,H);
     if(assets.bg){ const r=Math.max(W/assets.bg.width, H/assets.bg.height); const bw=assets.bg.width*r, bh=assets.bg.height*r;
       ctx.drawImage(assets.bg, (W-bw)/2, (H-bh)/2, bw, bh);

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
-<title>MOB TD – 弾ヒットで消える対応(フル)</title>
+<title>MOB TD – 前方のみ攻撃＋素通り防止(微後退調整)</title>
 <meta name="theme-color" content="#0b0c10" />
 <style>
   :root{
@@ -137,7 +137,7 @@
     SHIELD:{idle:"SL.png",walk:["SL2.png","SL3.png"],atk:["SL4.png","SL5.png"],proj:"SL8.png"},
     GIANT:{idle:"P1.png",walk:["P1.png","P2.png","P3.png"],charge:"P6.png",atk:"P7.png",proj:"P10.png"},
     SCREW:{idle:"B1.png",walk:["B2.png","B3.png","B4.png"],charge:"B12.png",atk:["B13.png","B14.png"]},
-    /* 新規：ウィングヴィラン（移動も攻撃も1VW.pngでOK） */
+    /* ウィングヴィラン */
     WING:{idle:"1VW.png",walk:["1VW.png"],atk:"1VW.png"},
     /* 弾画像 */
     PROJ:{
@@ -174,7 +174,7 @@
   const HOP_AMP_MINI=6;
   const GIANT_CHARGE_TIME=0.60, GIANT_HOP_AMP=14, GIANT_BIGJUMP_AMP=28, GIANT_BIGJUMP_PERIOD=3.0, GIANT_PROJ_TRAVEL=110;
 
-  /* ユニット定義（射程内全員ヒットは共通）*/
+  /* ユニット定義（攻撃は“前方のみ”＆射程内全員ヒット）*/
   const UNIT_KINDS = {
     BOX:{name:"MOB段ボール",hp:150,atk:20,atkInt:1.0,speed:3,cost:50,key:"BOX",rangePx:MELEE_RANGE,scale:0.6,hover:false,hop:false,proj:null},
     FTR:{name:"MOBファイター",hp:120,atk:30,atkInt:0.7,speed:5,cost:120,key:"FTR",rangePx:MELEE_RANGE,scale:0.6,hover:false,hop:false,proj:null},
@@ -193,7 +193,6 @@
       proj:{imgKey:"giant",speed:PROJ_SPEED_GIANT,maxTravel:GIANT_PROJ_TRAVEL,wobble:false,delayed:true,delaySec:GIANT_CHARGE_TIME},giant:true},
     SCREW:{name:"MOBスクリュー",hp:1500,atk:120,atkInt:1.7,speed:2,cost:200,key:"SCREW",rangePx:MELEE_RANGE,scale:0.72,hover:false,hop:false,
       proj:null, atkDelaySec:0.30, shakeOnCharge:true},
-    /* 新規：MOBウィングヴィラン（遠隔100px・弾2連・高速上下スイング） */
     WING:{name:"MOBウィングヴィラン",hp:500,atk:50,atkInt:2.2,speed:2,cost:260,key:"WING",rangePx:100,scale:0.72,hover:true,hop:false,
       proj:{imgKey:"wing",speed:PROJ_SPEED_WING,maxTravel:null,wobble:true,wobbleAmp:12,wobbleFreq:0.18,count:2,offsetYStep:7,phaseAlt:true}}
   };
@@ -232,7 +231,7 @@
   function drawImageCentered(ctx,img,cx,cy,w,h){ if(!img){ctx.fillStyle="#8886";ctx.fillRect(cx-w/2,cy-h/2,w,h);return;} ctx.drawImage(img,cx-w/2,cy-h/2,w,h); }
   function flash(target){ hits.push({ref:target, x:target.x, y:target.y-28, t:0}); }
 
-  /* 投射物（見た目のみ／衝突で消滅） */
+  /* 投射物（見た目のみ／命中で消滅） */
   class Projectile{
     constructor({x,y,side,imgKey,speed,maxTravel=null,wobble=false,wobbleAmp=4,wobbleFreq=0.08,wobblePhase=0}){
       this.x=x; this.y=y; this.side=side; this.img=assets.PROJ[imgKey];
@@ -292,18 +291,7 @@
     width(){return 64*this.scale;}
     height(){return 64*this.scale;}
 
-    getThreshold(){ return [0.7,0.4,0.1][this.knockIdx] ?? null; }
-
-    hurt(dmg){
-      if(this.state==="dead") return;
-      const prev=this.hp; this.hp=Math.max(0,this.hp-dmg); flash(this);
-      const thr=this.getThreshold();
-      if(thr!=null && prev>=this.maxHp*thr && this.hp<this.maxHp*thr){
-        this.knockActive=true; this.knockT=0; this.state="knock";
-      }
-      if(this.hp<=0) this.state="dead";
-    }
-
+    /* 前方だけを判定（背後攻撃なし） */
     hasFrontTarget(){
       const foes=this.side>0?enemies:allies;
       for(const f of foes){
@@ -341,7 +329,7 @@
       return 1.0;
     }
 
-    /* 弾の発射（演出）— proj.count/offsetYStep/phaseAltに対応 */
+    /* 弾の発射（演出） */
     emitProjectiles(){
       const p=this.proj; if(!p) return;
       const count=p.count||1;
@@ -364,6 +352,16 @@
       }
     }
 
+    hurt(dmg){
+      if(this.state==="dead") return;
+      const prev=this.hp; this.hp=Math.max(0,this.hp-dmg); flash(this);
+      const thr=[0.7,0.4,0.1][this.knockIdx] ?? null;
+      if(thr!=null && prev>=this.maxHp*thr && this.hp<this.maxHp*thr){
+        this.knockActive=true; this.knockT=0; this.state="knock";
+      }
+      if(this.hp<=0) this.state="dead";
+    }
+
     step(dt){
       if(this.state==="dead") return;
 
@@ -375,8 +373,7 @@
         this.x -= this.side*backSpeed*dt;
         this._lastDrawOffsets.knockY = -Math.sin(Math.PI*kRate)*this.knockHeights[Math.min(this.knockIdx, this.knockHeights.length-1)];
         const g=geom(), limitL=g.L_TOWER_X+14, limitR=g.R_TOWER_X-14;
-        if(this.side>0 && this.x<limitL) this.x=limitL;
-        if(this.side<0 && this.x>limitR) this.x=limitR;
+        this.x = Math.max(limitL, Math.min(this.x, limitR));
         if(kRate>=1){ this.knockActive=false; this._lastDrawOffsets.knockY=0; this.knockIdx++; this.state="walk"; }
         this.animT += dt; this.cool = Math.max(0, this.cool - dt);
         return;
@@ -385,7 +382,7 @@
       this.cool = Math.max(0, this.cool - dt);
       const inRange = this.hasFrontTarget();
 
-      // 遅延攻撃（ICE/SHIELD/GIANT/SCREW の溜め完了時点）
+      // 溜め完了でダメージ＋弾演出
       if(this.state==="atk" && this.firePending && this.animT >= this.fireDelaySec){
         if(this.proj){ this.emitProjectiles(); }
         this.sweepDamage();
@@ -406,11 +403,30 @@
           this.cool=this.atkInt;
         }
       }else{
-        this.state="walk";
-        let spd=this.speed*Unit.slowFactorNearGolem(this);
-        this.x += this.side*spd*dt;
+        // ====== 素通り防止：近距離に敵がいたら前進停止／背後なら微後退で正対 ======
+        const foes=this.side>0?enemies:allies;
+        let nearest=null, nearestDist=Infinity, signedDx=0;
+        for(const f of foes){
+          if(f.state==="dead") continue;
+          const dist=Math.abs(f.x - this.x);
+          if(dist < nearestDist){ nearest=f; nearestDist=dist; signedDx=(f.x - this.x)*this.side; }
+        }
         const g=geom(); const limitL=g.L_TOWER_X+18, limitR=g.R_TOWER_X-18;
-        if(this.side>0 && this.x>limitR) this.x=limitR; if(this.side<0 && this.x<limitL) this.x=limitL;
+        const blocked = nearest && nearestDist <= Math.max(18, (this.width()+nearest.width())*0.35);
+        if(blocked){
+          if(signedDx < 0){
+            // 背後に密着 → 少しだけ後退して正対（前方に回り込む）
+            const backspd = this.speed * 0.75;
+            this.x -= this.side * backspd * dt;
+          }
+          // 敵が前方近距離ならその場で待機（次のフレームで射程に入れば攻撃）
+        }else{
+          // 通常前進
+          this.state="walk";
+          let spd=this.speed*Unit.slowFactorNearGolem(this);
+          this.x += this.side*spd*dt;
+        }
+        this.x = Math.max(limitL, Math.min(this.x, limitR));
       }
 
       if(this.hp<=0) this.state="dead";

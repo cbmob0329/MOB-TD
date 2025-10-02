@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
-<title>MOB TD – MOBウィングヴィラン追加</title>
+<title>MOB TD – 弾ヒットで消える対応(フル)</title>
 <meta name="theme-color" content="#0b0c10" />
 <style>
   :root{
@@ -121,7 +121,7 @@
 
 <script>
 (() => {
-  /* 敵の出現比率（合計≈1.00）— 新ユニットは味方専用のため未追加 */
+  /* 敵の出現比率（合計≈1.00）— ウィングは味方専用のため未追加 */
   const ENEMY_WEIGHTS = { BOX:0.34, MINI:0.22, SHIELD:0.12, ICE:0.12, GIANT:0.05, SCREW:0.15 };
 
   /* 画像パス */
@@ -137,12 +137,12 @@
     SHIELD:{idle:"SL.png",walk:["SL2.png","SL3.png"],atk:["SL4.png","SL5.png"],proj:"SL8.png"},
     GIANT:{idle:"P1.png",walk:["P1.png","P2.png","P3.png"],charge:"P6.png",atk:"P7.png",proj:"P10.png"},
     SCREW:{idle:"B1.png",walk:["B2.png","B3.png","B4.png"],charge:"B12.png",atk:["B13.png","B14.png"]},
-    /* 新規：ウィングヴィラン（移動も攻撃も姿勢は1VW.pngでOK） */
+    /* 新規：ウィングヴィラン（移動も攻撃も1VW.pngでOK） */
     WING:{idle:"1VW.png",walk:["1VW.png"],atk:"1VW.png"},
     /* 弾画像 */
     PROJ:{
       magic:"mahou1.png", short:"teki7.png", golem:"R5.png", ice:"I8.png", shield:"SL8.png", giant:"P10.png",
-      wing:"DAN2.png"   /* ← 追加 */
+      wing:"DAN2.png"
     }
   };
 
@@ -232,19 +232,45 @@
   function drawImageCentered(ctx,img,cx,cy,w,h){ if(!img){ctx.fillStyle="#8886";ctx.fillRect(cx-w/2,cy-h/2,w,h);return;} ctx.drawImage(img,cx-w/2,cy-h/2,w,h); }
   function flash(target){ hits.push({ref:target, x:target.x, y:target.y-28, t:0}); }
 
-  /* 投射物（演出のみ。ダメージはユニット側で一括処理） */
+  /* 投射物（見た目のみ／衝突で消滅） */
   class Projectile{
     constructor({x,y,side,imgKey,speed,maxTravel=null,wobble=false,wobbleAmp=4,wobbleFreq=0.08,wobblePhase=0}){
       this.x=x; this.y=y; this.side=side; this.img=assets.PROJ[imgKey];
       this.angle=0; this.dead=false; this.speed=speed||220; this.startX=x; this.maxTravel=maxTravel;
       this.wobble=wobble; this._wobAmp=wobbleAmp; this._wobFreq=wobbleFreq; this._phase=wobblePhase; this._wobY=0;
+      this.travel=0; this.armDist=8; /* 近距離で即消え防止 */
     }
     step(dt){
-      this.x += (this.side>0?1:-1)*this.speed*dt;
+      const dx=(this.side>0?1:-1)*this.speed*dt;
+      this.x += dx; this.travel += Math.abs(dx);
       this.angle += (this.speed>=230?10:6)*dt;
       this._wobY = this.wobble ? Math.sin(this.x*this._wobFreq + this._phase)*this._wobAmp : 0;
+
       if(this.x<-40 || this.x>W+40) this.dead=true;
       if(this.maxTravel!=null && Math.abs(this.x - this.startX) >= this.maxTravel) this.dead=true;
+      if(this.dead) return;
+
+      /* 見た目の衝突判定：敵ユニット → タワー */
+      if(this.travel >= this.armDist){
+        const visY = (this.y - 28) + (this._wobY||0);
+        const foes = this.side>0 ? enemies : allies;
+        const hitXPadBase = 18;
+        for(const f of foes){
+          if(f.state==="dead") continue;
+          const fx = f.x;
+          const fy = f.y - f.height()*0.6;
+          const xClose = Math.abs(this.x - fx) <= Math.max(hitXPadBase, f.width()*0.38);
+          const yClose = Math.abs(visY - fy) <= (f.height()*0.55);
+          if(xClose && yClose){ this.dead = true; break; }
+        }
+        if(!this.dead){
+          const foeT = this.side>0 ? towerR : towerL;
+          const towerHitPad = 12;
+          if(this.side>0 ? (this.x >= foeT.x - towerHitPad) : (this.x <= foeT.x + towerHitPad)){
+            this.dead = true;
+          }
+        }
+      }
     }
     draw(ctx){ const sz=30; ctx.save(); ctx.translate(this.x, (this.y-28)+(this._wobY||0)); ctx.rotate(this.angle); drawImageCentered(ctx,this.img,0,0,sz,sz); ctx.restore(); }
   }
@@ -290,6 +316,7 @@
       return (dxT>=0 && dxT<=this.rangePx);
     }
 
+    /* 射程内“前方”の全対象へ一括ダメージ */
     sweepDamage(){
       const foes=this.side>0?enemies:allies;
       for(const f of foes){
@@ -358,7 +385,7 @@
       this.cool = Math.max(0, this.cool - dt);
       const inRange = this.hasFrontTarget();
 
-      // 遅延攻撃（ICE/SHIELD/GIANT/SCREWの溜め完了）
+      // 遅延攻撃（ICE/SHIELD/GIANT/SCREW の溜め完了時点）
       if(this.state==="atk" && this.firePending && this.animT >= this.fireDelaySec){
         if(this.proj){ this.emitProjectiles(); }
         this.sweepDamage();

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
-<title>MOB TD – レア度調整版</title>
+<title>MOB TD – 攻撃キャンセル修正＋背後再配置強化（レア度版）</title>
 <meta name="theme-color" content="#0b0c10" />
 <style>
   :root{
@@ -276,6 +276,7 @@
       this.knockIdx=0; this.knockT=0; this.knockDur=0.35; this.knockDist=32; this.knockActive=false;
       this.knockHeights=[16,18,20];
       this._lastDrawOffsets={hoverY:0, hopY:0, swayX:0, knockY:0};
+      this._rearRepositionT=0;
     }
     width(){return 64*this.scale;}
     height(){return 64*this.scale;}
@@ -351,6 +352,7 @@
     step(dt){
       if(this.state==="dead") return;
 
+      /* ノックバック中 */
       if(this.state==="knock" && this.knockActive){
         this.knockT += dt;
         const kRate=Math.min(1,this.knockT/this.knockDur);
@@ -364,50 +366,76 @@
         return;
       }
 
+      /* クールダウン更新 */
       this.cool = Math.max(0, this.cool - dt);
-      const inRange = this.hasFrontTarget();
 
-      if(this.state==="atk" && this.firePending && this.animT >= this.fireDelaySec){
-        if(this.proj){ this.emitProjectiles(); }
-        this.sweepDamage();
-        this.firePending=false;
+      /* === 発動保証：チャージ中は必ず撃ち切る（移動/状態遷移しない） === */
+      if(this.state==="atk" && this.firePending){
+        this.animT += dt;
+        if(this.animT >= this.fireDelaySec){
+          if(this.proj){ this.emitProjectiles(); }
+          this.sweepDamage();
+          this.firePending=false;
+          // 攻撃を撃ち切ったのでここで終了、次フレーム以降に移動/次攻撃を判断
+        }
+        return; // ← チャージ中はここで止める（キャンセル防止）
       }
 
-      if(inRange){
-        if(this.cool===0){
-          this.state="atk"; this.animT=0;
-          const isDelayed = (this.proj && this.proj.delayed) || (this.atkDelaySec>0);
-          if(isDelayed){
-            this.firePending=true;
-            this.fireDelaySec = (this.proj && this.proj.delayed) ? (this.proj.delaySec||0.2) : this.atkDelaySec;
-          }else{
-            if(this.proj){ this.emitProjectiles(); }
-            this.sweepDamage();
-          }
-          this.cool=this.atkInt;
-        }
-      }else{
-        /* 素通り防止：近距離に敵がいれば停止。背後に密着なら微後退して正対 */
-        const foes=this.side>0?enemies:allies;
-        let nearest=null, nearestDist=Infinity, signedDx=0;
-        for(const f of foes){
-          if(f.state==="dead") continue;
-          const dist=Math.abs(f.x - this.x);
-          if(dist < nearestDist){ nearest=f; nearestDist=dist; signedDx=(f.x - this.x)*this.side; }
-        }
-        const g=geom(); const limitL=g.L_TOWER_X+18, limitR=g.R_TOWER_X-18;
-        const blocked = nearest && nearestDist <= Math.max(18, (this.width()+nearest.width())*0.35);
-        if(blocked){
-          if(signedDx < 0){
-            const backspd = this.speed * 0.75;
-            this.x -= this.side * backspd * dt;
-          }
+      /* 前方ターゲット確認 */
+      const inRange = this.hasFrontTarget();
+
+      /* 攻撃開始判定 */
+      if(inRange && this.cool===0){
+        this.state="atk"; this.animT=0;
+        const delayed = (this.proj && this.proj.delayed) || (this.atkDelaySec>0);
+        if(delayed){
+          this.firePending=true;
+          this.fireDelaySec = (this.proj && this.proj.delayed) ? (this.proj.delaySec||0.2) : this.atkDelaySec;
         }else{
+          if(this.proj){ this.emitProjectiles(); }
+          this.sweepDamage();
+        }
+        this.cool=this.atkInt;
+        return; // 攻撃を開始したフレームは移動しない
+      }
+
+      /* ここから移動処理（素通り防止＋背後再配置） */
+      const foes=this.side>0?enemies:allies;
+      let nearest=null, nearestDist=Infinity, signedDx=0;
+      for(const f of foes){
+        if(f.state==="dead") continue;
+        const dist=Math.abs(f.x - this.x);
+        if(dist < nearestDist){ nearest=f; nearestDist=dist; signedDx=(f.x - this.x)*this.side; }
+      }
+      const g=geom(); const limitL=g.L_TOWER_X+18, limitR=g.R_TOWER_X-18;
+      const contactGap = Math.max(18, (this.width() + (nearest?nearest.width():this.width()))*0.35);
+      const blocked = nearest && nearestDist <= contactGap;
+
+      if(blocked && signedDx < 0){
+        /* 背後密着：相手を“前方”に置くため、相手座標の自軍側へ素早く後退 */
+        const buffer = 10; // 相手とこの距離だけズラして正対
+        const targetX = nearest.x - this.side*buffer - 1; // side: +1→少し左へ、-1→少し右へ
+        const repositionSpeed = Math.max(this.speed*1.35, 90); // 速めに後退（相手を追い抜く）
+        const dir = Math.sign(targetX - this.x);
+        this.x += Math.sign(dir)*Math.min(Math.abs(targetX - this.x), repositionSpeed*dt) * (dir===0?0:1);
+        this._rearRepositionT += dt;
+        // 上限・下限
+        this.x = Math.max(limitL, Math.min(this.x, limitR));
+        // 2秒以上再配置が続くのを避ける保険：わずかに補助ノック
+        if(this._rearRepositionT > 2.0){ this.x -= this.side*20; this._rearRepositionT = 0; }
+        this.state="walk";
+      }else{
+        this._rearRepositionT = 0;
+        if(blocked){
+          // 前方近距離にいるので待機（次フレームに射程入りやすい）
+          this.state="walk";
+        }else{
+          // 通常前進
           this.state="walk";
           let spd=this.speed*Unit.slowFactorNearGolem(this);
           this.x += this.side*spd*dt;
+          this.x = Math.max(limitL, Math.min(this.x, limitR));
         }
-        this.x = Math.max(limitL, Math.min(this.x, limitR));
       }
 
       if(this.hp<=0) this.state="dead";
@@ -433,14 +461,15 @@
       }
       const swayX = (this.sway && this.state==="walk") ? Math.sin(tNow*2.2 + this.x*0.05)*3 : 0;
 
+      /* モーション選択 */
       if(this.state==="walk"){
         if(this.giant && useHighJump){ img = A.walk[2] || A.idle; }
         else { img = A.walk[Math.floor(this.animT*WALK_FPS)%Math.max(1,A.walk.length)] || A.idle; }
       }else if(this.state==="atk"){
-        if(this.giant){ img = (this.animT<GIANT_CHARGE_TIME) ? (A.charge||A.idle) : (A.atk[0]||A.idle); }
-        else if(this.kind==="ICE"){ img = (this.animT<ICE_CHARGE_TIME) ? (A.charge||A.idle) : (A.atk[0]||A.idle); }
+        if(this.giant){ img = (this.firePending && this.animT<GIANT_CHARGE_TIME) ? (A.charge||A.idle) : (A.atk[0]||A.idle); }
+        else if(this.kind==="ICE"){ img = (this.firePending && this.animT<ICE_CHARGE_TIME) ? (A.charge||A.idle) : (A.atk[0]||A.idle); }
         else if(this.kind==="SCREW"){
-          if(this.animT < (this.atkDelaySec||0.3)){ img = A.charge || A.idle; }
+          if(this.firePending && this.animT < (this.atkDelaySec||0.3)){ img = A.charge || A.idle; }
           else{
             const rest = Math.max(0, (this.animT - (this.atkDelaySec||0.3)));
             const idx = Math.min(1, Math.floor(rest / ((ATK_TOTAL-ATK_IDLE_PHASE)/2)));
@@ -457,8 +486,8 @@
       const w=this.width(), h=this.height(), flip=this.side<0;
 
       let shakeX=0, shakeY=0;
-      if( (this.giant && this.state==="atk" && this.animT<GIANT_CHARGE_TIME) ||
-          (this.kind==="SCREW" && this.state==="atk" && this.animT<(this.atkDelaySec||0.3) && this.shakeOnCharge) ){
+      if( (this.giant && this.state==="atk" && this.firePending) ||
+          (this.kind==="SCREW" && this.state==="atk" && this.firePending && this.animT<(this.atkDelaySec||0.3)) ){
         const s=2.8; shakeX=(Math.random()*2-1)*s; shakeY=(Math.random()*2-1)*s;
       }
 
@@ -469,11 +498,11 @@
       if(flip) ctx.scale(-1,1);
       drawImageCentered(ctx,img,0,-h*0.6,w,h);
 
-      if(this.kind==="ICE" && this.state==="atk" && this.animT<ICE_CHARGE_TIME){
+      if(this.kind==="ICE" && this.state==="atk" && this.firePending){
         const p=Math.min(1,this.animT/ICE_CHARGE_TIME), s=ICE_CHARGE_MIN_S*(1-p)+ICE_CHARGE_MAX_S*p;
         const orb=assets.PROJ.ice; const offX=14, offY=-h*0.68; drawImageCentered(ctx, orb, (flip?-offX:offX), offY, 24*s, 24*s);
       }
-      if(this.giant && this.state==="atk" && this.animT<GIANT_CHARGE_TIME){
+      if(this.giant && this.state==="atk" && this.firePending){
         const p=(Math.sin(tNow*12)+1)/2, s=0.4+p*0.3; const orb=assets.PROJ.giant; const offX=18, offY=-h*0.65;
         drawImageCentered(ctx, orb, (flip?-offX:offX), offY, 26*s, 26*s);
       }

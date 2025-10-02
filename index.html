@@ -3,27 +3,79 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
-<title>MOB TD – 遠距離は距離維持（近接のみ踏み込み）</title>
+<title>MOB TD – 近距離対峙で立ち絵化（踏み込み修正維持）</title>
 <meta name="theme-color" content="#0b0c10" />
 <style>
-  :root{ --app-w:420px; --row-hud:52px; --row-controls:186px; --hud-bg:#0e1118f0; --hud-fg:#eaf3ff; --hud-accent:#4dd0ff; --panel-bg:#0b1424f2; --panel-stroke:#1b2a44; --panel-shadow:0 8px 22px rgba(0,0,0,.38); }
+  :root{
+    --app-w: 420px;
+    --row-hud: 52px;
+    --row-controls: 186px;
+    --hud-bg: #0e1118f0;
+    --hud-fg: #eaf3ff;
+    --hud-accent: #4dd0ff;
+    --panel-bg: #0b1424f2;
+    --panel-stroke: #1b2a44;
+    --panel-shadow: 0 8px 22px rgba(0,0,0,.38);
+  }
   html,body{height:100%;margin:0;background:#000;color:#fff;font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Hiragino Kaku Gothic ProN",Meiryo,sans-serif;overscroll-behavior:none}
   *{box-sizing:border-box}
   #root{position:fixed;inset:0;display:grid;place-items:center}
-  #app{width:min(100vw,var(--app-w));height:100dvh;display:grid;grid-template-rows:calc(var(--row-hud)+env(safe-area-inset-top)) 1fr calc(var(--row-controls)+env(safe-area-inset-bottom));background:#05080f;border:1px solid #0e1522;border-radius:18px;overflow:hidden;box-shadow:0 14px 48px rgba(0,0,0,.55)}
-  header.hud{display:flex;align-items:center;gap:6px;padding:6px 8px calc(6px + env(safe-area-inset-top)) 8px;background:linear-gradient(to bottom,#020409,#0b1220);border-bottom:1px solid #0f1b2e}
-  .pill{background:var(--hud-bg);color:var(--hud-fg);border:1px solid #1b2638;border-radius:999px;padding:4px 8px;font-size:13px;display:flex;align-items:center;gap:6px;box-shadow:0 2px 8px rgba(0,0,0,.25)}
-  .pill b{color:var(--hud-accent)} .spacer{flex:1} .tiny{font-size:12px;opacity:.9} .clickable{cursor:pointer}
-  main.play{position:relative;background:#000} #view{position:absolute;inset:0;width:100%;height:100%;image-rendering:pixelated;display:block}
-  .center-msg{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);padding:6px 10px;border-radius:10px;background:#00000099;border:1px solid #24324f;font-size:12px;text-align:center;pointer-events:none}
-  footer.controls{padding:8px 8px calc(10px + env(safe-area-inset-bottom)) 8px;background:linear-gradient(to top,#091323,#0b1424cc);border-top:1px solid #0f1b2e;overflow:auto}
+  #app{
+    width:min(100vw,var(--app-w));
+    height:100dvh;
+    display:grid;
+    grid-template-rows: calc(var(--row-hud) + env(safe-area-inset-top)) 1fr calc(var(--row-controls) + env(safe-area-inset-bottom));
+    background:#05080f;
+    border:1px solid #0e1522; border-radius:18px; overflow:hidden;
+    box-shadow:0 14px 48px rgba(0,0,0,.55);
+  }
+
+  header.hud{
+    display:flex; align-items:center; gap:6px;
+    padding:6px 8px calc(6px + env(safe-area-inset-top)) 8px;
+    background:linear-gradient(to bottom,#020409,#0b1220);
+    border-bottom:1px solid #0f1b2e;
+  }
+  .pill{
+    background:var(--hud-bg); color:var(--hud-fg);
+    border:1px solid #1b2638; border-radius:999px; padding:4px 8px; font-size:13px;
+    display:flex; align-items:center; gap:6px;
+    box-shadow:0 2px 8px rgba(0,0,0,.25);
+  }
+  .pill b{color:var(--hud-accent)}
+  .spacer{flex:1}
+  .tiny{font-size:12px; opacity:.9}
+  .clickable{cursor:pointer}
+
+  main.play{position:relative; background:#000;}
+  #view{position:absolute; inset:0; width:100%; height:100%; image-rendering:pixelated; display:block;}
+  .center-msg{
+    position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
+    padding:6px 10px; border-radius:10px; background:#00000099; border:1px solid #24324f;
+    font-size:12px; text-align:center; pointer-events:none;
+  }
+
+  footer.controls{
+    padding:8px 8px calc(10px + env(safe-area-inset-bottom)) 8px;
+    background:linear-gradient(to top,#091323,#0b1424cc);
+    border-top:1px solid #0f1b2e;
+    overflow:auto;
+  }
   .grid4{height:100%;display:grid;grid-template-columns:repeat(4,1fr);grid-auto-rows:1fr;gap:8px}
-  .card{background:var(--panel-bg);color:#e7f1ff;border:1px solid var(--panel-stroke);border-radius:12px;padding:8px;display:grid;align-content:start;gap:6px;text-align:center;box-shadow:var(--panel-shadow)}
-  .card h3{margin:0;font-size:13px;letter-spacing:.2px}
-  .cost{font-size:11px;opacity:.9}
-  .btn{appearance:none;border:1px solid #2a3751;background:#122034;color:#e9f3ff;border-radius:10px;padding:8px 10px;font-weight:700;font-size:13px;cursor:pointer;box-shadow:inset 0 0 0 1px #19314e,0 2px 10px rgba(0,0,0,.25)}
-  .btn:disabled{opacity:.5;filter:grayscale(.3);cursor:not-allowed}
-  .hint{font-size:10px;opacity:.8}
+  .card{
+    background:var(--panel-bg); color:#e7f1ff; border:1px solid var(--panel-stroke);
+    border-radius:12px; padding:8px; display:grid; align-content:start; gap:6px; text-align:center;
+    box-shadow:var(--panel-shadow);
+  }
+  .card h3{margin:0; font-size:13px; letter-spacing:.2px}
+  .cost{font-size:11px; opacity:.9}
+  .btn{
+    appearance:none; border:1px solid #2a3751; background:#122034; color:#e9f3ff; border-radius:10px;
+    padding:8px 10px; font-weight:700; font-size:13px; cursor:pointer;
+    box-shadow:inset 0 0 0 1px #19314e, 0 2px 10px rgba(0,0,0,.25);
+  }
+  .btn:disabled{opacity:.5; filter:grayscale(.3); cursor:not-allowed}
+  .hint{font-size:10px; opacity:.8}
 </style>
 </head>
 <body>
@@ -62,6 +114,7 @@
 
 <script>
 (() => {
+  /* 敵の出現比率—ウィングは味方専用 */
   const ENEMY_WEIGHTS = { BOX:0.34, MINI:0.22, SHIELD:0.12, ICE:0.12, GIANT:0.05, SCREW:0.15 };
 
   const IMAGES = {
@@ -80,6 +133,7 @@
     PROJ:{ magic:"mahou1.png", short:"teki7.png", golem:"R5.png", ice:"I8.png", shield:"SL8.png", giant:"P10.png", wing:"DAN2.png" }
   };
 
+  /* キャンバス */
   const canvas=document.getElementById("view"), ctx=canvas.getContext("2d");
   const playEl=document.querySelector("main.play");
   const coinsEl=document.getElementById("coins"), fpsEl=document.getElementById("fps"), msgEl=document.getElementById("msg");
@@ -87,6 +141,7 @@
   function measure(){ const r=playEl.getBoundingClientRect(); W=Math.max(320, r.width|0); H=Math.max(360, r.height|0); canvas.width=W; canvas.height=H; }
   measure(); addEventListener("resize", measure);
 
+  /* 幾何 */
   function geom(){
     const groundBandH=Math.round(H*0.22), groundTopY=H-groundBandH;
     const GROUND_Y=groundTopY+Math.round(groundBandH*0.85);
@@ -94,6 +149,7 @@
     return {groundBandH,groundTopY,GROUND_Y,L_TOWER_X,R_TOWER_X};
   }
 
+  /* 定数・チューニング */
   const COIN_TICK=3000, COIN_ADD=8;
   const PX_PER_SPEED=18, WALK_FPS=6, ATK_IDLE_PHASE=0.18, ATK_TOTAL=0.36;
   const MELEE_RANGE=26, RANGE_MEDIUM=140, RANGE_MEDIUM_PLUS=160;
@@ -103,22 +159,40 @@
   const HOP_AMP_MINI=6;
   const GIANT_CHARGE_TIME=0.60, GIANT_HOP_AMP=14, GIANT_BIGJUMP_AMP=28, GIANT_BIGJUMP_PERIOD=3.0, GIANT_PROJ_TRAVEL=110;
 
-  const ENGAGE_PAD = 8, CREEP_FACTOR = 0.5, REAR_BACK_FACTOR = 1.35, REAR_BUFFER = 10;
+  /* 踏み込み＆対峙チューニング */
+  const ENGAGE_PAD = 8;          // 基本の余裕
+  const CREEP_FACTOR = 0.5;      // ブロック中のにじり寄り速度（歩行速度の何倍）
+  const REAR_BACK_FACTOR = 1.35; // 背後再配置の後退倍率
+  const REAR_BUFFER = 10;        // 背後から前方化する時に空ける距離
 
+  /* ステータス（レア度調整後） */
   const UNIT_KINDS = {
+    /* R */
     BOX:{name:"MOB段ボール",hp:142,atk:19,atkInt:1.0,speed:3,cost:45,key:"BOX",rangePx:MELEE_RANGE,scale:0.6,hover:false,hop:false,proj:null},
-    TEKI:{name:"ワルMOB",hp:95,atk:14,atkInt:1.0,speed:3,cost:25,key:"TEKI",rangePx:80,scale:0.6,hover:false,hop:false,proj:{imgKey:"short",speed:PROJ_SPEED_SHORT,maxTravel:120,wobble:true}},
+    TEKI:{name:"ワルMOB",hp:95,atk:14,atkInt:1.0,speed:3,cost:25,key:"TEKI",rangePx:80,scale:0.6,hover:false,hop:false,
+      proj:{imgKey:"short",speed:PROJ_SPEED_SHORT,maxTravel:120,wobble:true}},
     MINI:{name:"MOBアイスロボミニ",hp:152,atk:22,atkInt:1.0,speed:2,cost:50,key:"MINI",rangePx:MELEE_RANGE,scale:0.58,hover:false,hop:true,proj:null,sway:true},
-    SHIELD:{name:"MOBシールド",hp:475,atk:27,atkInt:1.6,speed:1,cost:100,key:"SHIELD",rangePx:RANGE_MEDIUM_PLUS,scale:0.72,hover:false,hop:false,proj:{imgKey:"shield",speed:PROJ_SPEED_SHIELD,maxTravel:null,wobble:false,delayed:true,delaySec:0.20}},
+    SHIELD:{name:"MOBシールド",hp:475,atk:27,atkInt:1.6,speed:1,cost:100,key:"SHIELD",rangePx:RANGE_MEDIUM_PLUS,scale:0.72,hover:false,hop:false,
+      proj:{imgKey:"shield",speed:PROJ_SPEED_SHIELD,maxTravel:null,wobble:false,delayed:true,delaySec:0.20}},
+    /* SR */
     FTR:{name:"MOBファイター",hp:132,atk:33,atkInt:0.66,speed:5,cost:130,key:"FTR",rangePx:MELEE_RANGE,scale:0.6,hover:false,hop:false,proj:null},
-    GOLEM:{name:"MOBゴレムロボ",hp:660,atk:11,atkInt:1.42,speed:1,cost:110,key:"GOLEM",rangePx:MELEE_RANGE,scale:0.75,hover:false,hop:false,proj:{imgKey:"golem",speed:PROJ_SPEED_GOLEM,maxTravel:90,wobble:false}},
-    WIZ:{name:"MOB ウィザード",hp:250,atk:100,atkInt:2.34,speed:2,cost:270,key:"WIZ",rangePx:200,scale:0.66,hover:true,hop:false,proj:{imgKey:"magic",speed:PROJ_SPEED_WIZ,maxTravel:null,wobble:false}},
-    ICE:{name:"MOBアイスロボ",hp:1125,atk:125,atkInt:2.25,speed:1,cost:270,key:"ICE",rangePx:RANGE_MEDIUM,scale:0.75,hover:false,hop:true,proj:{imgKey:"ice",speed:PROJ_SPEED_ICE,maxTravel:null,wobble:false,delayed:true,delaySec:ICE_CHARGE_TIME}},
-    SCREW:{name:"MOBスクリュー",hp:1875,atk:150,atkInt:1.53,speed:2,cost:270,key:"SCREW",rangePx:MELEE_RANGE,scale:0.72,hover:false,hop:false,proj:null,atkDelaySec:0.30,shakeOnCharge:true},
-    WING:{name:"MOBウィングヴィラン",hp:625,atk:62,atkInt:1.98,speed:2,cost:350,key:"WING",rangePx:100,scale:0.72,hover:true,hop:false,proj:{imgKey:"wing",speed:PROJ_SPEED_WING,maxTravel:null,wobble:true,wobbleAmp:12,wobbleFreq:0.18,count:2,offsetYStep:7,phaseAlt:true}},
-    GIANT:{name:"MOB巨神",hp:2800,atk:130,atkInt:2.12,speed:1,cost:480,key:"GIANT",rangePx:MELEE_RANGE,scale:1.25,hover:false,hop:true,proj:{imgKey:"giant",speed:PROJ_SPEED_GIANT,maxTravel:GIANT_PROJ_TRAVEL,wobble:false,delayed:true,delaySec:GIANT_CHARGE_TIME},giant:true}
+    GOLEM:{name:"MOBゴレムロボ",hp:660,atk:11,atkInt:1.42,speed:1,cost:110,key:"GOLEM",rangePx:MELEE_RANGE,scale:0.75,hover:false,hop:false,
+      proj:{imgKey:"golem",speed:PROJ_SPEED_GOLEM,maxTravel:90,wobble:false}},
+    /* SSR */
+    WIZ:{name:"MOB ウィザード",hp:250,atk:100,atkInt:2.34,speed:2,cost:270,key:"WIZ",rangePx:200,scale:0.66,hover:true,hop:false,
+      proj:{imgKey:"magic",speed:PROJ_SPEED_WIZ,maxTravel:null,wobble:false}},
+    ICE:{name:"MOBアイスロボ",hp:1125,atk:125,atkInt:2.25,speed:1,cost:270,key:"ICE",rangePx:RANGE_MEDIUM,scale:0.75,hover:false,hop:true,
+      proj:{imgKey:"ice",speed:PROJ_SPEED_ICE,maxTravel:null,wobble:false,delayed:true,delaySec:ICE_CHARGE_TIME}},
+    SCREW:{name:"MOBスクリュー",hp:1875,atk:150,atkInt:1.53,speed:2,cost:270,key:"SCREW",rangePx:MELEE_RANGE,scale:0.72,hover:false,hop:false,
+      proj:null, atkDelaySec:0.30, shakeOnCharge:true},
+    WING:{name:"MOBウィングヴィラン",hp:625,atk:62,atkInt:1.98,speed:2,cost:350,key:"WING",rangePx:100,scale:0.72,hover:true,hop:false,
+      proj:{imgKey:"wing",speed:PROJ_SPEED_WING,maxTravel:null,wobble:true,wobbleAmp:12,wobbleFreq:0.18,count:2,offsetYStep:7,phaseAlt:true}},
+    /* UR */
+    GIANT:{name:"MOB巨神",hp:2800,atk:130,atkInt:2.12,speed:1,cost:480,key:"GIANT",rangePx:MELEE_RANGE,scale:1.25,hover:false,hop:true,
+      proj:{imgKey:"giant",speed:PROJ_SPEED_GIANT,maxTravel:GIANT_PROJ_TRAVEL,wobble:false,delayed:true,delaySec:GIANT_CHARGE_TIME},giant:true}
   };
 
+  /* 画像ロード */
   function loadImage(src){ return new Promise(res=>{ const img=new Image(); img.src=src; img.onload=()=>res(img); img.onerror=()=>res(null); }); }
   const assets={};
   async function loadAll(){
@@ -134,6 +208,7 @@
     assets.PROJ={}; for(const k of Object.keys(IMAGES.PROJ)) assets.PROJ[k]=await loadImage(IMAGES.PROJ[k]);
   }
 
+  /* ゲーム状態 */
   let coins=500, lastCoinTick=0, paused=false, lastTime=performance.now(), fpsSmoothed=60;
   const towerL={x:0,y:0,hp:1200,side:+1}, towerR={x:0,y:0,hp:1200,side:-1};
   const allies=[], enemies=[], projectiles=[], hits=[];
@@ -145,11 +220,13 @@
     return "BOX";
   }
 
+  /* ユーティリティ */
   function mixHex(a,b,t){function toRGB(h){const n=parseInt(h.slice(1),16);return{r:(n>>16)&255,g:(n>>8)&255,b:n&255}}function toHex(r,g,b){return"#"+[r,g,b].map(v=>v.toString(16).padStart(2,"0")).join("")}
     const A=toRGB(a),B=toRGB(b); return toHex(Math.round(A.r*(1-t)+B.r*t),Math.round(A.g*(1-t)+B.g*t),Math.round(A.b*(1-t)+B.b*t));}
   function drawImageCentered(ctx,img,cx,cy,w,h){ if(!img){ctx.fillStyle="#8886";ctx.fillRect(cx-w/2,cy-h/2,w,h);return;} ctx.drawImage(img,cx-w/2,cy-h/2,w,h); }
   function flash(target){ hits.push({ref:target, x:target.x, y:target.y-28, t:0}); }
 
+  /* 投射物（見た目のみ／命中で消滅） */
   class Projectile{
     constructor({x,y,side,imgKey,speed,maxTravel=null,wobble=false,wobbleAmp=4,wobbleFreq=0.08,wobblePhase=0}){
       this.x=x; this.y=y; this.side=side; this.img=assets.PROJ[imgKey];
@@ -191,6 +268,7 @@
     draw(ctx){ const sz=30; ctx.save(); ctx.translate(this.x, (this.y-28)+(this._wobY||0)); ctx.rotate(this.angle); drawImageCentered(ctx,this.img,0,0,sz,sz); ctx.restore(); }
   }
 
+  /* ユニット */
   class Unit{
     constructor(kindKey, side){
       const def=UNIT_KINDS[kindKey]; this.kind=kindKey; this.side=side; const g=geom();
@@ -204,30 +282,33 @@
       this.knockHeights=[16,18,20];
       this._lastDrawOffsets={hoverY:0, hopY:0, swayX:0, knockY:0};
       this._rearRepositionT=0;
-      this.engaged=false;
-      this.isRanged = (this.rangePx > MELEE_RANGE); // ★ 遠距離判定
+      this.engaged=false; // ★ 近距離対峙中フラグ
     }
     width(){return 64*this.scale;}
     height(){return 64*this.scale;}
 
     frontMetrics(){
-      let best=Infinity, target=null, targetW=0;
+      let best=Infinity, target=null, targetW=0, isTower=false;
       const foes=this.side>0?enemies:allies;
       for(const f of foes){
         if(f.state==="dead") continue;
         const dx=(f.x - this.x)*this.side;
-        if(dx>=0 && dx<best){ best=dx; target=f; targetW=f.width(); }
+        if(dx>=0 && dx<best){ best=dx; target=f; targetW=f.width(); isTower=false; }
       }
       const foeTower=this.side>0?towerR:towerL;
       const dxT=(foeTower.x - this.x)*this.side;
-      if(dxT>=0 && dxT<best){ best=dxT; targetW=70; }
-      return {dist:best, targetW};
+      if(dxT>=0 && dxT<best){ best=dxT; target=null; targetW=70; isTower=true; }
+      return {dist:best, target, targetW, isTower};
     }
     effectiveRange(targetW){
       const sizePad = Math.min(22, Math.floor((this.width() + (targetW||this.width())) * 0.20));
       const giantPad = this.giant ? 12 : 0;
       const pad = Math.max(ENGAGE_PAD, sizePad) + giantPad;
       return this.rangePx + pad;
+    }
+    canHitFront(){
+      const fm=this.frontMetrics();
+      return fm.dist <= this.effectiveRange(fm.targetW);
     }
     sweepDamage(){
       const foes=this.side>0?enemies:allies;
@@ -255,9 +336,9 @@
       const p=this.proj; if(!p) return;
       const count=p.count||1;
       for(let i=0;i<count;i++){
-        const sign=(i%2===0)?+1:-1;
-        const offY=(count===1)?0:(p.offsetYStep||6)*sign;
-        const phase=p.phaseAlt?(i%2===0?0:Math.PI):0;
+        const sign = (i%2===0)?+1:-1;
+        const offY = (count===1)?0 : (p.offsetYStep||6)*sign;
+        const phase = p.phaseAlt ? (i%2===0?0:Math.PI) : 0;
         projectiles.push(new Projectile({
           x:this.x + (this.side>0?+14:-14),
           y:this.y + offY,
@@ -284,9 +365,10 @@
 
     step(dt){
       if(this.state==="dead") return;
-      this.engaged=false;
 
-      /* knockback */
+      this.engaged=false; // ★ 毎フレーム初期化
+
+      /* ノックバック中 */
       if(this.state==="knock" && this.knockActive){
         this.knockT += dt;
         const kRate=Math.min(1,this.knockT/this.knockDur);
@@ -300,9 +382,10 @@
         return;
       }
 
+      /* クールダウン */
       this.cool = Math.max(0, this.cool - dt);
 
-      /* チャージ発動保証 */
+      /* 発動保証：チャージ中は撃ち切る */
       if(this.state==="atk" && this.firePending){
         this.animT += dt;
         if(this.animT >= this.fireDelaySec){
@@ -314,20 +397,25 @@
         return;
       }
 
+      /* 攻撃開始判定（実効射程） */
       const fm = this.frontMetrics();
-      const effRangeMelee = this.effectiveRange(fm.targetW);
-      const startRange = this.isRanged ? this.rangePx : effRangeMelee; // ★ 遠距離は素の射程でのみ発動
-
-      /* 攻撃開始 */
-      if(fm.dist <= startRange && this.cool===0){
+      const effRange = this.effectiveRange(fm.targetW);
+      if(fm.dist <= effRange && this.cool===0){
         this.state="atk"; this.animT=0;
         const delayed = (this.proj && this.proj.delayed) || (this.atkDelaySec>0);
-        if(delayed){ this.firePending=true; this.fireDelaySec = (this.proj && this.proj.delayed) ? (this.proj.delaySec||0.2) : this.atkDelaySec; }
-        else{ if(this.proj){ this.emitProjectiles(); } this.sweepDamage(); this.state="walk"; }
-        this.cool=this.atkInt; return;
+        if(delayed){
+          this.firePending=true;
+          this.fireDelaySec = (this.proj && this.proj.delayed) ? (this.proj.delaySec||0.2) : this.atkDelaySec;
+        }else{
+          if(this.proj){ this.emitProjectiles(); }
+          this.sweepDamage();
+          this.state="walk";
+        }
+        this.cool=this.atkInt;
+        return;
       }
 
-      /* 接敵／移動 */
+      /* ここから移動（素通り防止＋背後再配置＋にじり寄り） */
       const foes=this.side>0?enemies:allies;
       let nearest=null, nearestDist=Infinity, signedDx=0, nearestW=this.width();
       for(const f of foes){
@@ -338,11 +426,11 @@
       const g=geom(); const limitL=g.L_TOWER_X+18, limitR=g.R_TOWER_X-18;
 
       const contactRaw = Math.max(18, (this.width() + (nearest?nearestW:this.width()))*0.35);
-      const contactGap = Math.min(contactRaw, startRange + 6); // ★ クランプもstartRange基準
+      const contactGap = Math.min(contactRaw, effRange + 6);
       const blocked = nearest && nearestDist <= contactGap;
 
-      /* 対峙したら立ち絵 */
-      if( (blocked && signedDx >= 0) || (fm.dist <= startRange && this.cool>0) ){
+      /* ★ 対峙判定：前方ブロック中、または射程内でクール中なら立ち絵 */
+      if( (blocked && signedDx >= 0) || (fm.dist <= effRange && this.cool>0) ){
         this.engaged = true;
       }
 
@@ -353,25 +441,29 @@
           const repositionSpeed = Math.max(this.speed*REAR_BACK_FACTOR, 90);
           const delta = Math.max(-repositionSpeed*dt, Math.min(repositionSpeed*dt, targetX - this.x));
           this.x += delta;
+          this._rearRepositionT += dt;
+          if(this._rearRepositionT > 2.0){ this.x -= this.side*20; this._rearRepositionT=0; }
         }else{
-          /* 前に敵。近接だけ“にじり寄り”、遠距離は距離維持 */
-          if(!this.isRanged && fm.dist > this.rangePx){
+          /* 前方にいる → 射程外ならにじり寄る（見た目は立ち絵のまま） */
+          if(fm.dist > this.rangePx){
             const need = Math.max(0, fm.dist - this.rangePx + 1);
             const creep = Math.min(this.speed*CREEP_FACTOR*dt, need);
             this.x += this.side*creep;
           }
+          this._rearRepositionT = 0;
         }
-        this._rearRepositionT = 0;
         this.state="walk";
       }else{
         this._rearRepositionT = 0;
-        /* 通常前進（遠距離でも、敵がまだ遠いなら前進） */
+        /* 通常前進 */
         this.state="walk";
         let spd=this.speed*Unit.slowFactorNearGolem(this);
         this.x += this.side*spd*dt;
       }
 
+      /* 画面端制限 */
       this.x = Math.max(limitL, Math.min(this.x, limitR));
+
       if(this.hp<=0) this.state="dead";
       this.animT += dt;
     }
@@ -395,30 +487,38 @@
       }
       let swayX = (this.sway && this.state==="walk") ? Math.sin(tNow*2.2 + this.x*0.05)*3 : 0;
 
+      /* モーション選択 */
       if(this.state==="walk"){
         if(this.engaged){
-          img = A.idle; hopY=0; swayX=0; hoverY = this.hover ? Math.sin(tNow + this.x*0.01)*4 : 0;
-        }else if(this.giant && useHighJump){ img=A.walk[2]||A.idle; }
-        else{ img=A.walk[Math.floor(this.animT*WALK_FPS)%Math.max(1,A.walk.length)] || A.idle; }
+          img = A.idle;           // ★ 対峙中は立ち絵
+          hopY = 0;               // ★ 揺れ・ホップも止めて“止まっている”見た目
+          swayX = 0;
+          hoverY = this.hover ? Math.sin(tNow + this.x*0.01)*4 : 0; // 浮遊系は弱めに
+        }else if(this.giant && useHighJump){
+          img = A.walk[2] || A.idle;
+        }else{
+          img = A.walk[Math.floor(this.animT*WALK_FPS)%Math.max(1,A.walk.length)] || A.idle;
+        }
       }else if(this.state==="atk"){
         if(this.giant){ img = (this.firePending && this.animT<GIANT_CHARGE_TIME) ? (A.charge||A.idle) : (A.atk[0]||A.idle); }
         else if(this.kind==="ICE"){ img = (this.firePending && this.animT<ICE_CHARGE_TIME) ? (A.charge||A.idle) : (A.atk[0]||A.idle); }
         else if(this.kind==="SCREW"){
           if(this.firePending && this.animT < (this.atkDelaySec||0.3)){ img = A.charge || A.idle; }
           else{
-            const rest=Math.max(0,this.animT-(this.atkDelaySec||0.3));
-            const idx=Math.min(1,Math.floor(rest/((ATK_TOTAL-ATK_IDLE_PHASE)/2)));
-            img=A.atk[idx]||A.atk[0]||A.idle;
+            const rest = Math.max(0, (this.animT - (this.atkDelaySec||0.3)));
+            const idx = Math.min(1, Math.floor(rest / ((ATK_TOTAL-ATK_IDLE_PHASE)/2)));
+            img = A.atk[idx] || A.atk[0] || A.idle;
           }
         }else{
           const phase=this.animT%ATK_TOTAL;
           if(phase<ATK_IDLE_PHASE) img=A.idle;
-          else{ const len=Math.max(1,A.atk.length); const idx=Math.floor((phase-ATK_IDLE_PHASE)/(ATK_TOTAL-ATK_IDLE_PHASE)*len)%len; img=A.atk[idx]||A.idle; }
+          else { const len=Math.max(1,A.atk.length); const idx=Math.floor((phase-ATK_IDLE_PHASE)/(ATK_TOTAL-ATK_IDLE_PHASE)*len)%len; img=A.atk[idx]||A.idle; }
         }
-      }else if(this.state==="knock"){ img=A.idle; }
-      else{ img=A.idle; }
+      }else if(this.state==="knock"){ img = A.idle; }
+      else { img = A.idle; }
 
       const w=this.width(), h=this.height(), flip=this.side<0;
+
       let shakeX=0, shakeY=0;
       if( (this.giant && this.state==="atk" && this.firePending) ||
           (this.kind==="SCREW" && this.state==="atk" && this.firePending && this.animT<(this.atkDelaySec||0.3)) ){
@@ -426,6 +526,7 @@
       }
 
       this._lastDrawOffsets.hoverY=hoverY; this._lastDrawOffsets.hopY=hopY;
+
       ctx.save();
       ctx.translate(this.x + swayX + shakeX, this.y + hoverY + hopY + (this._lastDrawOffsets.knockY||0) + shakeY);
       if(flip) ctx.scale(-1,1);
@@ -442,6 +543,7 @@
 
       ctx.restore();
 
+      /* HPバー（頭上） */
       const offsetsY=this._lastDrawOffsets.hoverY + this._lastDrawOffsets.hopY + (this._lastDrawOffsets.knockY||0);
       const hpw=this.giant?72:50, hph=this.giant?7:6;
       const barX=this.x - hpw/2, barY=(this.y + offsetsY) - h*1.18;
@@ -452,12 +554,15 @@
     }
   }
 
+  /* スポーン */
   function spawnAlly(kind){ const def=UNIT_KINDS[kind]; if(coins<def.cost) return; coins-=def.cost; allies.push(new Unit(kind,+1)); pulse(`{ ${def.name} 出撃 }`); }
   function spawnEnemy(kind){ enemies.push(new Unit(kind,-1)); }
 
+  /* 進行 */
   function step(dt){
     if(paused) return;
     const now=performance.now(); if(now-lastCoinTick>=COIN_TICK){ coins+=COIN_ADD; lastCoinTick=now; }
+
     if(!enemyActive){ spawnEnemy(pickEnemyKind()); enemyActive=true; }
 
     for(const u of allies) u.step(dt);
@@ -477,6 +582,7 @@
     }
   }
 
+  /* 描画 */
   function draw(){
     const g=geom();
     ctx.clearRect(0,0,W,H);
@@ -509,6 +615,7 @@
     }
   }
 
+  /* ループ＆UI */
   function loop(){
     if(paused) return;
     const now=performance.now(); let dt=(now-lastTime)/1000; lastTime=now; dt=Math.min(dt,0.05);
@@ -518,7 +625,6 @@
     requestAnimationFrame(loop);
   }
   function pulse(t){ msgEl.textContent=t; msgEl.style.display="block"; clearTimeout(pulse._t); pulse._t=setTimeout(()=>{msgEl.style.display="none";}, 1000); }
-
   document.getElementById("btnBox").addEventListener("click", ()=>spawnAlly("BOX"));
   document.getElementById("btnFtr").addEventListener("click", ()=>spawnAlly("FTR"));
   document.getElementById("btnEvil").addEventListener("click", ()=>spawnAlly("TEKI"));

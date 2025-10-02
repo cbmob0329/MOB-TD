@@ -3,15 +3,15 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
-<title>MOB TD – プレイ領域の最小高さ固定＆遠距離の距離維持</title>
+<title>MOB TD – 遠距離の距離維持（射程内ホールド）</title>
 <meta name="theme-color" content="#0b0c10" />
 <style>
   :root{
     --app-w: 420px;
     --row-hud: 52px;
     --row-controls: 186px;
-    --main-min: 320px;   /* ★ プレイ領域の最低高 */
-    --ctrl-min: 148px;   /* ★ 操作パネルも最低高を確保 */
+    --main-min: 320px;   /* プレイ領域の最低高 */
+    --ctrl-min: 148px;   /* 操作パネルの最低高 */
     --hud-bg: #0e1118f0;
     --hud-fg: #eaf3ff;
     --hud-accent: #4dd0ff;
@@ -26,7 +26,6 @@
     width:min(100vw,var(--app-w));
     height:100dvh;
     display:grid;
-    /* ★ 真ん中のプレイ領域が潰れないよう minmax を設定 */
     grid-template-rows:
       calc(var(--row-hud) + env(safe-area-inset-top))
       minmax(var(--main-min), 1fr)
@@ -65,7 +64,7 @@
     padding:8px 8px calc(10px + env(safe-area-inset-bottom)) 8px;
     background:linear-gradient(to top,#091323,#0b1424cc);
     border-top:1px solid #0f1b2e;
-    overflow:auto; /* ★ 画面が極端に小さい時はここがスクロール */
+    overflow:auto; /* 画面が極端に小さい時はスクロール */
   }
   .grid4{height:100%;display:grid;grid-template-columns:repeat(4,1fr);grid-auto-rows:1fr;gap:8px}
   .card{
@@ -144,13 +143,11 @@
   const playEl=document.querySelector("main.play");
   const coinsEl=document.getElementById("coins"), fpsEl=document.getElementById("fps"), msgEl=document.getElementById("msg");
   let W=420, H=560;
-
   function measure(){
     const r=playEl.getBoundingClientRect();
-    /* ★ 端末が小さくても見えるよう最小値を少し下げる */
-    W = Math.max(320, (r.width|0));
-    H = Math.max(300, (r.height|0));
-    canvas.width = W; canvas.height = H;
+    W=Math.max(320, (r.width|0));
+    H=Math.max(300, (r.height|0));
+    canvas.width=W; canvas.height=H;
   }
   measure(); addEventListener("resize", measure);
 
@@ -172,11 +169,12 @@
   const HOP_AMP_MINI=6;
   const GIANT_CHARGE_TIME=0.60, GIANT_HOP_AMP=14, GIANT_BIGJUMP_AMP=28, GIANT_BIGJUMP_PERIOD=3.0, GIANT_PROJ_TRAVEL=110;
 
-  /* 踏み込み＆対峙＆距離維持 */
-  const ENGAGE_PAD = 8;          // 基本の余裕
-  const CREEP_FACTOR = 0.5;      // ブロック中のにじり寄り速度
+  /* 近接と遠距離の距離制御 */
+  const ENGAGE_PAD = 8;          // 対峙時の基本余裕
+  const CREEP_FACTOR = 0.5;      // 近接のにじり寄り速度（歩行速度の係数）
   const REAR_BACK_FACTOR = 1.35; // 背後再配置の後退倍率
-  const REAR_BUFFER = 10;        // 背後から前方化する時の距離
+  const REAR_BUFFER = 10;        // 背後から正対に戻す時の距離
+  const RANGED_HOLD_PAD = 12;    // ★ 射程内に入ったらこの分の余裕を残して前進停止
 
   /* ステータス（レア度調整後） */
   const UNIT_KINDS = {
@@ -296,7 +294,7 @@
       this._lastDrawOffsets={hoverY:0, hopY:0, swayX:0, knockY:0};
       this._rearRepositionT=0;
       this.engaged=false;
-      this.isRanged = (this.rangePx > MELEE_RANGE); // ★ 遠距離判定
+      this.isRanged = (this.rangePx > MELEE_RANGE); // 遠距離判定
       this.giant = !!def.giant;
     }
     width(){return 64*this.scale;}
@@ -409,7 +407,9 @@
 
       const fm = this.frontMetrics();
       const effRangeMelee = this.effectiveRange(fm.targetW);
-      const startRange = this.isRanged ? this.rangePx : effRangeMelee; // ★ 遠距離は素の射程でのみ発動
+      const startRange = this.isRanged ? this.rangePx : effRangeMelee; // 遠距離は素の射程で発動
+      const inPureRange = (fm.dist <= this.rangePx);
+      const inRangedHold = this.isRanged && (fm.dist <= (this.rangePx - RANGED_HOLD_PAD)); // ★ 射程内ホールド
 
       /* 攻撃開始 */
       if(fm.dist <= startRange && this.cool===0){
@@ -420,7 +420,7 @@
         this.cool=this.atkInt; return;
       }
 
-      /* 接敵／移動（遠距離は無駄に詰めない） */
+      /* 接敵／移動（遠距離は射程内で前進停止） */
       const foes=this.side>0?enemies:allies;
       let nearest=null, nearestDist=Infinity, signedDx=0, nearestW=this.width();
       for(const f of foes){
@@ -434,8 +434,8 @@
       const contactGap = Math.min(contactRaw, startRange + 6);
       const blocked = nearest && nearestDist <= contactGap;
 
-      /* 対峙したら立ち絵 */
-      if( (blocked && signedDx >= 0) || (fm.dist <= startRange && this.cool>0) ){
+      /* 対峙フラグ：前方ブロック or 射程内（遠距離も含む） */
+      if( (blocked && signedDx >= 0) || inPureRange ){
         this.engaged = true;
       }
 
@@ -447,7 +447,7 @@
           const delta = Math.max(-repositionSpeed*dt, Math.min(repositionSpeed*dt, targetX - this.x));
           this.x += delta;
         }else{
-          /* 近接だけ“にじり寄り”、遠距離は距離維持 */
+          /* 近接のみ“にじり寄り”、遠距離は停止 */
           if((!this.isRanged) && fm.dist > this.rangePx){
             const need = Math.max(0, fm.dist - this.rangePx + 1);
             const creep = Math.min(this.speed*CREEP_FACTOR*dt, need);
@@ -458,10 +458,15 @@
         this.state="walk";
       }else{
         this._rearRepositionT = 0;
-        /* 通常前進 */
         this.state="walk";
-        let spd=this.speed*Unit.slowFactorNearGolem(this);
-        this.x += this.side*spd*dt;
+        if(this.isRanged && (inPureRange || inRangedHold)){
+          /* ★ 射程に入ったら前進停止（押しすぎ防止の余裕つき） */
+          // ここでは移動しない
+        }else{
+          /* 通常前進 */
+          let spd=this.speed*Unit.slowFactorNearGolem(this);
+          this.x += this.side*spd*dt;
+        }
       }
 
       /* 画面端制限 */

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
-<title>MOB TD – MOBスクリュー追加（起動修正）</title>
+<title>MOB TD – MOBウィングヴィラン追加</title>
 <meta name="theme-color" content="#0b0c10" />
 <style>
   :root{
@@ -61,7 +61,13 @@
     border-top:1px solid #0f1b2e;
     overflow:auto;
   }
-  .grid4{height:100%;display:grid;grid-template-columns:repeat(4,1fr);grid-auto-rows:1fr;gap:8px;}
+  .grid4{
+    height:100%;
+    display:grid;
+    grid-template-columns: repeat(4, 1fr);
+    grid-auto-rows: 1fr;
+    gap:8px;
+  }
   .card{
     background:var(--panel-bg); color:#e7f1ff;
     border:1px solid var(--panel-stroke); border-radius:12px; padding:8px;
@@ -107,6 +113,7 @@
         <div class="card"><h3>MOBシールド</h3><div class="cost">コスト <b>110</b> / HP500 / 中距離160px</div><button class="btn" id="btnShield">出撃</button><div class="hint">SL, SL2〜3, SL4〜5, SL8.png</div></div>
         <div class="card"><h3>MOB巨神</h3><div class="cost">コスト <b>300</b> / HP2000 / ボス</div><button class="btn" id="btnGiant">出撃</button><div class="hint">P1,P2,P3,P6,P7,P10.png</div></div>
         <div class="card"><h3>MOBスクリュー</h3><div class="cost">コスト <b>200</b> / HP1500 / 近接（中速）</div><button class="btn" id="btnScrew">出撃</button><div class="hint">B1,B2〜4,B12,B13,B14.png</div></div>
+        <div class="card"><h3>MOBウィングヴィラン</h3><div class="cost">コスト <b>260</b> / HP500 / 遠距離100px</div><button class="btn" id="btnWing">出撃</button><div class="hint">1VW.png, DAN2.png（2連弾）</div></div>
       </div>
     </footer>
   </div>
@@ -114,7 +121,7 @@
 
 <script>
 (() => {
-  /* 敵の出現比率（合計≈1.00） */
+  /* 敵の出現比率（合計≈1.00）— 新ユニットは味方専用のため未追加 */
   const ENEMY_WEIGHTS = { BOX:0.34, MINI:0.22, SHIELD:0.12, ICE:0.12, GIANT:0.05, SCREW:0.15 };
 
   /* 画像パス */
@@ -129,9 +136,14 @@
     MINI:{idle:"IC1.png",walk:["IC2.png"],atk:"IC3.png"},
     SHIELD:{idle:"SL.png",walk:["SL2.png","SL3.png"],atk:["SL4.png","SL5.png"],proj:"SL8.png"},
     GIANT:{idle:"P1.png",walk:["P1.png","P2.png","P3.png"],charge:"P6.png",atk:"P7.png",proj:"P10.png"},
-    /* 新規 MOBスクリュー */
     SCREW:{idle:"B1.png",walk:["B2.png","B3.png","B4.png"],charge:"B12.png",atk:["B13.png","B14.png"]},
-    PROJ:{magic:"mahou1.png",short:"teki7.png",golem:"R5.png",ice:"I8.png",shield:"SL8.png",giant:"P10.png"}
+    /* 新規：ウィングヴィラン（移動も攻撃も姿勢は1VW.pngでOK） */
+    WING:{idle:"1VW.png",walk:["1VW.png"],atk:"1VW.png"},
+    /* 弾画像 */
+    PROJ:{
+      magic:"mahou1.png", short:"teki7.png", golem:"R5.png", ice:"I8.png", shield:"SL8.png", giant:"P10.png",
+      wing:"DAN2.png"   /* ← 追加 */
+    }
   };
 
   /* DOM */
@@ -156,7 +168,7 @@
   const COIN_TICK=3000, COIN_ADD=8;
   const PX_PER_SPEED=18, WALK_FPS=6, ATK_IDLE_PHASE=0.18, ATK_TOTAL=0.36;
   const MELEE_RANGE=26, RANGE_MEDIUM=140, RANGE_MEDIUM_PLUS=160;
-  const PROJ_SPEED_WIZ=230, PROJ_SPEED_SHORT=200, PROJ_SPEED_GOLEM=180, PROJ_SPEED_ICE=200, PROJ_SPEED_SHIELD=210, PROJ_SPEED_GIANT=240;
+  const PROJ_SPEED_WIZ=230, PROJ_SPEED_SHORT=200, PROJ_SPEED_GOLEM=180, PROJ_SPEED_ICE=200, PROJ_SPEED_SHIELD=210, PROJ_SPEED_GIANT=240, PROJ_SPEED_WING=240;
   const GOLEM_BLOCK_DIST=26, GOLEM_SLOW_RATE=0.25;
   const ICE_CHARGE_TIME=0.50, ICE_CHARGE_MIN_S=0.18, ICE_CHARGE_MAX_S=1.0;
   const HOP_AMP_MINI=6;
@@ -179,9 +191,11 @@
       proj:{imgKey:"shield",speed:PROJ_SPEED_SHIELD,maxTravel:null,wobble:false,delayed:true,delaySec:0.20}},
     GIANT:{name:"MOB巨神",hp:2000,atk:100,atkInt:2.5,speed:1,cost:300,key:"GIANT",rangePx:MELEE_RANGE,scale:1.25,hover:false,hop:true,
       proj:{imgKey:"giant",speed:PROJ_SPEED_GIANT,maxTravel:GIANT_PROJ_TRAVEL,wobble:false,delayed:true,delaySec:GIANT_CHARGE_TIME},giant:true},
-    /* 新規 MOBスクリュー：近接だが0.3sの溜め→一括ヒット（自身のみ震える） */
     SCREW:{name:"MOBスクリュー",hp:1500,atk:120,atkInt:1.7,speed:2,cost:200,key:"SCREW",rangePx:MELEE_RANGE,scale:0.72,hover:false,hop:false,
-      proj:null, atkDelaySec:0.30, shakeOnCharge:true}
+      proj:null, atkDelaySec:0.30, shakeOnCharge:true},
+    /* 新規：MOBウィングヴィラン（遠隔100px・弾2連・高速上下スイング） */
+    WING:{name:"MOBウィングヴィラン",hp:500,atk:50,atkInt:2.2,speed:2,cost:260,key:"WING",rangePx:100,scale:0.72,hover:true,hop:false,
+      proj:{imgKey:"wing",speed:PROJ_SPEED_WING,maxTravel:null,wobble:true,wobbleAmp:12,wobbleFreq:0.18,count:2,offsetYStep:7,phaseAlt:true}}
   };
 
   /* 画像ローディング */
@@ -220,12 +234,15 @@
 
   /* 投射物（演出のみ。ダメージはユニット側で一括処理） */
   class Projectile{
-    constructor({x,y,side,imgKey,speed,maxTravel=null,wobble=false}){ this.x=x; this.y=y; this.side=side; this.img=assets.PROJ[imgKey];
-      this.angle=0; this.dead=false; this.speed=speed||220; this.startX=x; this.maxTravel=maxTravel; this.wobble=wobble; this._wobY=0; }
+    constructor({x,y,side,imgKey,speed,maxTravel=null,wobble=false,wobbleAmp=4,wobbleFreq=0.08,wobblePhase=0}){
+      this.x=x; this.y=y; this.side=side; this.img=assets.PROJ[imgKey];
+      this.angle=0; this.dead=false; this.speed=speed||220; this.startX=x; this.maxTravel=maxTravel;
+      this.wobble=wobble; this._wobAmp=wobbleAmp; this._wobFreq=wobbleFreq; this._phase=wobblePhase; this._wobY=0;
+    }
     step(dt){
       this.x += (this.side>0?1:-1)*this.speed*dt;
       this.angle += (this.speed>=230?10:6)*dt;
-      this._wobY = this.wobble ? Math.sin(this.x*0.08)*4 : 0;
+      this._wobY = this.wobble ? Math.sin(this.x*this._wobFreq + this._phase)*this._wobAmp : 0;
       if(this.x<-40 || this.x>W+40) this.dead=true;
       if(this.maxTravel!=null && Math.abs(this.x - this.startX) >= this.maxTravel) this.dead=true;
     }
@@ -297,6 +314,29 @@
       return 1.0;
     }
 
+    /* 弾の発射（演出）— proj.count/offsetYStep/phaseAltに対応 */
+    emitProjectiles(){
+      const p=this.proj; if(!p) return;
+      const count=p.count||1;
+      for(let i=0;i<count;i++){
+        const sign = (i%2===0)?+1:-1;
+        const offY = (count===1)?0 : (p.offsetYStep||6)*sign;
+        const phase = p.phaseAlt ? (i%2===0?0:Math.PI) : 0;
+        projectiles.push(new Projectile({
+          x:this.x + (this.side>0?+14:-14),
+          y:this.y + offY,
+          side:this.side,
+          imgKey:p.imgKey,
+          speed:p.speed||220,
+          maxTravel:p.maxTravel ?? null,
+          wobble:!!p.wobble,
+          wobbleAmp:p.wobbleAmp||4,
+          wobbleFreq:p.wobbleFreq||0.08,
+          wobblePhase:phase
+        }));
+      }
+    }
+
     step(dt){
       if(this.state==="dead") return;
 
@@ -318,16 +358,9 @@
       this.cool = Math.max(0, this.cool - dt);
       const inRange = this.hasFrontTarget();
 
-      // 遅延攻撃（ICE/SHIELD/GIANTの溜め、SCREWの0.3s溜め）
+      // 遅延攻撃（ICE/SHIELD/GIANT/SCREWの溜め完了）
       if(this.state==="atk" && this.firePending && this.animT >= this.fireDelaySec){
-        if(this.proj){
-          projectiles.push(new Projectile({
-            x:this.x + (this.side>0?+14:-14), y:this.y, side:this.side,
-            imgKey:this.proj.imgKey, 
-            speed: this.proj.speed || 220,  /* ← 修正ポイント：speed: に変更 */
-            maxTravel:this.proj.maxTravel ?? null, wobble:!!this.proj.wobble
-          }));
-        }
+        if(this.proj){ this.emitProjectiles(); }
         this.sweepDamage();
         this.firePending=false;
       }
@@ -340,12 +373,7 @@
             this.firePending=true;
             this.fireDelaySec = (this.proj && this.proj.delayed) ? (this.proj.delaySec||0.2) : this.atkDelaySec;
           }else{
-            if(this.proj){
-              projectiles.push(new Projectile({
-                x:this.x + (this.side>0?+10:-10), y:this.y, side:this.side,
-                imgKey:this.proj.imgKey, speed:this.proj.speed||220, maxTravel:this.proj.maxTravel ?? null, wobble:!!this.proj.wobble
-              }));
-            }
+            if(this.proj){ this.emitProjectiles(); }
             this.sweepDamage();
           }
           this.cool=this.atkInt;
@@ -385,14 +413,11 @@
         if(this.giant && useHighJump){ img = A.walk[2] || A.idle; }
         else { img = A.walk[Math.floor(this.animT*WALK_FPS)%Math.max(1,A.walk.length)] || A.idle; }
       }else if(this.state==="atk"){
-        if(this.giant){
-          img = (this.animT<GIANT_CHARGE_TIME) ? (A.charge||A.idle) : (A.atk[0]||A.idle);
-        }else if(this.kind==="ICE"){
-          img = (this.animT<ICE_CHARGE_TIME) ? (A.charge||A.idle) : (A.atk[0]||A.idle);
-        }else if(this.kind==="SCREW"){
-          if(this.animT < (this.atkDelaySec||0.3)){
-            img = A.charge || A.idle;
-          }else{
+        if(this.giant){ img = (this.animT<GIANT_CHARGE_TIME) ? (A.charge||A.idle) : (A.atk[0]||A.idle); }
+        else if(this.kind==="ICE"){ img = (this.animT<ICE_CHARGE_TIME) ? (A.charge||A.idle) : (A.atk[0]||A.idle); }
+        else if(this.kind==="SCREW"){
+          if(this.animT < (this.atkDelaySec||0.3)){ img = A.charge || A.idle; }
+          else{
             const rest = Math.max(0, (this.animT - (this.atkDelaySec||0.3)));
             const idx = Math.min(1, Math.floor(rest / ((ATK_TOTAL-ATK_IDLE_PHASE)/2)));
             img = A.atk[idx] || A.atk[0] || A.idle;
@@ -421,6 +446,7 @@
       if(flip) ctx.scale(-1,1);
       drawImageCentered(ctx,img,0,-h*0.6,w,h);
 
+      // ICE/巨神の溜め演出
       if(this.kind==="ICE" && this.state==="atk" && this.animT<ICE_CHARGE_TIME){
         const p=Math.min(1,this.animT/ICE_CHARGE_TIME), s=ICE_CHARGE_MIN_S*(1-p)+ICE_CHARGE_MAX_S*p;
         const orb=assets.PROJ.ice; const offX=14, offY=-h*0.68; drawImageCentered(ctx, orb, (flip?-offX:offX), offY, 24*s, 24*s);
@@ -526,6 +552,7 @@
   document.getElementById("btnShield").addEventListener("click", ()=>spawnAlly("SHIELD"));
   document.getElementById("btnGiant").addEventListener("click", ()=>spawnAlly("GIANT"));
   document.getElementById("btnScrew").addEventListener("click", ()=>spawnAlly("SCREW"));
+  document.getElementById("btnWing").addEventListener("click", ()=>spawnAlly("WING"));
   document.getElementById("pausePill").addEventListener("click", ()=>{
     paused=!paused; document.getElementById("pausePill").textContent = paused ? "▶ Resume" : "⏸ Pause";
     if(!paused){ lastTime=performance.now(); loop(); }

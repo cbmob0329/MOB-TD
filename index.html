@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
-<title>MOB TD – 近接2撃目不発 修正（エンゲージ余裕＋にじり寄り）</title>
+<title>MOB TD – 近接の踏み込み修正（巨神対策込）</title>
 <meta name="theme-color" content="#0b0c10" />
 <style>
   :root{
@@ -160,7 +160,7 @@
   const GIANT_CHARGE_TIME=0.60, GIANT_HOP_AMP=14, GIANT_BIGJUMP_AMP=28, GIANT_BIGJUMP_PERIOD=3.0, GIANT_PROJ_TRAVEL=110;
 
   /* ★ 近接安定化の新定数 */
-  const ENGAGE_PAD = 8;          // 射程＋この余裕までは“射程内”扱い
+  const ENGAGE_PAD = 8;          // 基本の余裕
   const CREEP_FACTOR = 0.5;      // ブロック中のにじり寄り速度（歩行速度の何倍）
   const REAR_BACK_FACTOR = 1.35; // 背後再配置の後退倍率
   const REAR_BUFFER = 10;        // 背後から前方化する時に空ける距離
@@ -286,24 +286,33 @@
     width(){return 64*this.scale;}
     height(){return 64*this.scale;}
 
-    /* 前方ターゲットまでの最短距離（dx>=0のみ）。無ければInfinity */
-    frontDist(){
-      let best=Infinity;
+    /* 最前方ターゲットの距離・幅等を取得 */
+    frontMetrics(){
+      let best=Infinity, target=null, targetW=0, isTower=false;
       const foes=this.side>0?enemies:allies;
       for(const f of foes){
         if(f.state==="dead") continue;
         const dx=(f.x - this.x)*this.side;
-        if(dx>=0 && dx<best) best=dx;
+        if(dx>=0 && dx<best){ best=dx; target=f; targetW=f.width(); isTower=false; }
       }
       const foeTower=this.side>0?towerR:towerL;
       const dxT=(foeTower.x - this.x)*this.side;
-      if(dxT>=0 && dxT<best) best=dxT;
-      return best;
+      if(dxT>=0 && dxT<best){ best=dxT; target=null; targetW=70; isTower=true; } // タワーは仮の幅70
+      return {dist:best, target, targetW, isTower};
     }
 
-    /* “射程＋余裕”で前方ヒット可否を判定 */
+    /* 体格に応じて“動的余裕”を加えた実効射程を返す */
+    effectiveRange(targetW){
+      const sizePad = Math.min(22, Math.floor((this.width() + (targetW||this.width())) * 0.20));
+      const giantPad = this.giant ? 12 : 0; // 巨神はさらに踏み込み余裕
+      const pad = Math.max(ENGAGE_PAD, sizePad) + giantPad;
+      return this.rangePx + pad;
+    }
+
+    /* 前方にヒット可能か（実効射程で判定） */
     canHitFront(){
-      return this.frontDist() <= (this.rangePx + ENGAGE_PAD);
+      const fm=this.frontMetrics();
+      return fm.dist <= this.effectiveRange(fm.targetW);
     }
 
     /* 前方の全対象に一括ダメージ */
@@ -395,9 +404,10 @@
         return;
       }
 
-      /* 攻撃開始判定（射程＋余裕） */
-      const canHit = this.canHitFront();
-      if(canHit && this.cool===0){
+      /* 攻撃開始判定（実効射程） */
+      const fm = this.frontMetrics();
+      const effRange = this.effectiveRange(fm.targetW);
+      if(fm.dist <= effRange && this.cool===0){
         this.state="atk"; this.animT=0;
         const delayed = (this.proj && this.proj.delayed) || (this.atkDelaySec>0);
         if(delayed){
@@ -414,14 +424,17 @@
 
       /* ここから移動（素通り防止＋背後再配置＋にじり寄り） */
       const foes=this.side>0?enemies:allies;
-      let nearest=null, nearestDist=Infinity, signedDx=0;
+      let nearest=null, nearestDist=Infinity, signedDx=0, nearestW=this.width();
       for(const f of foes){
         if(f.state==="dead") continue;
         const dist=Math.abs(f.x - this.x);
-        if(dist < nearestDist){ nearest=f; nearestDist=dist; signedDx=(f.x - this.x)*this.side; }
+        if(dist < nearestDist){ nearest=f; nearestDist=dist; signedDx=(f.x - this.x)*this.side; nearestW=f.width(); }
       }
       const g=geom(); const limitL=g.L_TOWER_X+18, limitR=g.R_TOWER_X-18;
-      const contactGap = Math.max(18, (this.width() + (nearest?nearest.width():this.width()))*0.35);
+
+      /* 体格に応じたブロック距離。行き過ぎで“踏み込めない”を防ぐためクランプ */
+      const contactRaw = Math.max(18, (this.width() + (nearest?nearestW:this.width()))*0.35);
+      const contactGap = Math.min(contactRaw, effRange + 6); // ★ 射程＋余裕＋6pxより遠くで止まらない
       const blocked = nearest && nearestDist <= contactGap;
 
       if(blocked){
@@ -434,10 +447,10 @@
           this._rearRepositionT += dt;
           if(this._rearRepositionT > 2.0){ this.x -= this.side*20; this._rearRepositionT=0; }
         }else{
-          /* 前方にいるが“あと半歩”で届かない → ブロック中でもにじり寄る */
-          const front = this.frontDist();
-          if(front > this.rangePx && front <= this.rangePx + ENGAGE_PAD*2){
-            const creep = Math.min(this.speed*CREEP_FACTOR*dt, front - this.rangePx + 1);
+          /* 前方にいる → 射程外ならブロック中でも“にじり寄り”して入る */
+          if(fm.dist > this.rangePx){
+            const need = Math.max(0, fm.dist - this.rangePx + 1);
+            const creep = Math.min(this.speed*CREEP_FACTOR*dt, need);
             this.x += this.side*creep;
           }
           this._rearRepositionT = 0;
@@ -478,6 +491,7 @@
       const swayX = (this.sway && this.state==="walk") ? Math.sin(tNow*2.2 + this.x*0.05)*3 : 0;
 
       /* モーション選択 */
+      const ATK_IDLE_PHASE=0.18, ATK_TOTAL=0.36, WALK_FPS=6;
       if(this.state==="walk"){
         if(this.giant && useHighJump){ img = A.walk[2] || A.idle; }
         else { img = A.walk[Math.floor(this.animT*WALK_FPS)%Math.max(1,A.walk.length)] || A.idle; }
@@ -567,6 +581,7 @@
   /* 描画 */
   function draw(){
     const g=geom();
+    const ctx=canvas.getContext("2d");
     ctx.clearRect(0,0,W,H);
     if(assets.bg){ const r=Math.max(W/assets.bg.width, H/assets.bg.height); const bw=assets.bg.width*r, bh=assets.bg.height*r;
       ctx.drawImage(assets.bg, (W-bw)/2, (H-bh)/2, bw, bh);
